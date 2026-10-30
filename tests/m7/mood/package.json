@@ -1,0 +1,7 @@
+{
+  "name": "@dsh-brain/m7-mood-tests",
+  "private": true,
+  "type": "module",
+  "description": "M7.2 情感状态并入主账的测试入口：让 `node --test tests/m7/mood` 可运行（Node 24 不再递归目录参数）",
+  "main": "./run-all.mjs"
+}

@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light" />
+<title>外置大脑 · 检查器</title>
+<link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead__id">
+    <span class="glyph" aria-hidden="true">🧠</span>
+    <div class="masthead__names">
+      <h1>外置大脑</h1>
+      <p>M3 · 只读检查器</p>
+    </div>
+  </div>
+
+  <nav class="tabs" id="tabs" aria-label="视图">
+    <button type="button" role="tab" data-view="memories" aria-selected="true">记忆</button>
+    <button type="button" role="tab" data-view="context" aria-selected="false">上下文</button>
+    <button type="button" role="tab" data-view="search" aria-selected="false">检索</button>
+    <button type="button" role="tab" data-view="deletions" aria-selected="false">删除</button>
+    <button type="button" role="tab" data-view="backups" aria-selected="false">备份</button>
+    <button type="button" role="tab" data-view="health" aria-selected="false">健康</button>
+  </nav>
+
+  <div class="conn" id="conn" data-state="pending">
+    <span class="conn__dot" aria-hidden="true"></span>
+    <span id="conn-text">连接中…</span>
+  </div>
+</header>
+
+<!-- 记忆视图入口（2026-10-30）：这些页面挂在宿主 dsh web 上，7420 只做转发。
+     放一条常驻条而不是塞进 tabs——tabs 是治理面板自己的视图，混在一起会让人
+     以为它们也归这个页面管。样式在 styles.css 的 .mnav（**不写内联 style**，
+     这是本面板的 CSP 约定：style-src 'self'）。 -->
+<nav class="mnav" aria-label="记忆视图">
+  <span class="mnav__label">记忆视图</span>
+  <a class="mnav__link" href="/dsh-brain">记忆</a>
+  <a class="mnav__link" href="/dsh-brain/sea">心海</a>
+  <a class="mnav__link" href="/dsh-brain/usage">使用</a>
+  <a class="mnav__link" href="/dsh-brain/conflicts">矛盾</a>
+  <a class="mnav__link" href="/dsh-brain/entities">实体</a>
+  <a class="mnav__link" href="/dsh-brain/mood">心情</a>
+</nav>
+
+<!-- 隔离横幅：promoted=false 时**必须**出现。不是装饰，是安全要求。 -->
+<div class="isolated" id="isolation-banner" data-active="false" hidden role="alert">
+  <span class="isolated__mark" aria-hidden="true">!</span>
+  <div class="isolated__body">
+    <p class="isolated__title">这个实例不能上线，只能只读检修</p>
+    <p class="isolated__why" id="isolation-why">—</p>
+    <ul class="isolated__reasons" id="isolation-reasons"></ul>
+  </div>
+  <div class="isolated__side">
+    <span class="isolated__tag num" id="isolation-source">—</span>
+    <button class="btn btn--ghost" type="button" id="isolation-go">去恢复</button>
+  </div>
+</div>
+
+<main class="stage">
+
+  <!-- ================= 1. 记忆 ================= -->
+  <section class="view" id="view-memories" aria-labelledby="h-memories">
+    <div class="view__head">
+      <h2 id="h-memories">记忆</h2>
+      <p class="lede">
+        每条记忆都必须说清：<em>从哪来</em>（来源）、<em>第几版</em>（版本）、<em>什么时候有效</em>（有效期）、<em>多确定</em>（置信度）。
+        来源分三档——已核对、无法验证、丢失，不能混为一谈。
+      </p>
+    </div>
+
+    <form class="filters" id="mem-filters">
+      <label class="filters__f">
+        <span>层</span>
+        <select name="layer" id="f-layer">
+          <option value="">全部</option>
+          <option value="fragment">fragment · 碎片</option>
+          <option value="long">long · 长期</option>
+          <option value="permanent">permanent · 永久</option>
+        </select>
+      </label>
+      <label class="filters__f">
+        <span>类型</span>
+        <select name="type" id="f-type">
+          <option value="">全部</option>
+          <option value="profile">profile</option>
+          <option value="episode">episode</option>
+          <option value="semantic">semantic</option>
+          <option value="commitment">commitment</option>
+          <option value="skill">skill</option>
+          <option value="self">self</option>
+          <option value="relationship">relationship</option>
+          <option value="boundary">boundary</option>
+        </select>
+      </label>
+      <label class="filters__f">
+        <span>状态</span>
+        <select name="status" id="f-status">
+          <option value="">全部（不含已删）</option>
+          <option value="active">active</option>
+          <option value="candidate">candidate</option>
+          <option value="superseded">superseded</option>
+          <option value="expired">expired</option>
+          <option value="archived">archived</option>
+          <option value="deleted">deleted</option>
+        </select>
+      </label>
+      <label class="filters__f filters__f--grow">
+        <span>摘要过滤</span>
+        <input type="search" id="f-q" placeholder="输入关键词，回车筛选当前页" autocomplete="off" />
+      </label>
+      <div class="filters__actions">
+        <button class="btn" type="submit">刷新</button>
+        <span class="filters__count" id="mem-count">—</span>
+      </div>
+    </form>
+
+    <div class="split">
+      <div class="panel panel--table">
+        <table class="grid grid--mem">
+          <colgroup>
+            <col class="c-sum" />
+            <col class="c-kind" />
+            <col class="c-src" />
+            <col class="c-ver" />
+            <col class="c-valid" />
+            <col class="c-conf" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col">摘要</th>
+              <th scope="col">层 · 类型</th>
+              <th scope="col">来源</th>
+              <th scope="col">版本</th>
+              <th scope="col">有效期</th>
+              <th scope="col">置信度</th>
+            </tr>
+          </thead>
+          <tbody id="mem-rows">
+            <tr><td colspan="6" class="empty">读取中…</td></tr>
+          </tbody>
+        </table>
+        <div class="pager" id="mem-pager" hidden>
+          <button class="btn btn--ghost" type="button" id="mem-prev">上一页</button>
+          <span class="pager__note" id="mem-pager-note"></span>
+          <button class="btn btn--ghost" type="button" id="mem-next">下一页</button>
+        </div>
+      </div>
+
+      <aside class="panel panel--detail" id="mem-detail" aria-live="polite">
+        <div class="empty empty--tall">
+          <span class="empty__mark">◫</span>
+          <p>左侧选一条记忆</p>
+          <p class="empty__hint">详情里会摊开来源核验结果、版本历史与取代链。</p>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ================= 2. 上下文 ================= -->
+  <section class="view" id="view-context" aria-labelledby="h-context" hidden>
+    <div class="view__head">
+      <h2 id="h-context">上下文检查器</h2>
+      <p class="lede">
+        <strong>built → attached → sent</strong> 是三个不同强度的断言。
+        只到 built，就只是「包里装好了」；没有请求边界证据，任何「已注入模型」的说法都不成立。
+      </p>
+    </div>
+
+    <div class="split split--ctx">
+      <div class="panel panel--list">
+        <div class="panel__bar">
+          <label class="inline-f">
+            <span>session</span>
+            <input type="text" id="ctx-session" placeholder="全部会话" autocomplete="off" />
+          </label>
+          <button class="btn btn--ghost" type="button" id="ctx-reload">刷新</button>
+        </div>
+        <ul class="pkglist" id="ctx-list">
+          <li class="empty">读取中…</li>
+        </ul>
+      </div>
+
+      <div class="panel panel--detail" id="ctx-detail" aria-live="polite">
+        <div class="empty empty--tall">
+          <span class="empty__mark">◫</span>
+          <p>选一个构包</p>
+          <p class="empty__hint">会显示三级证据阶梯、注入了哪些段、来源核验、Token 估算、被丢掉的段与理由。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 3. 检索诊断 ================= -->
+  <section class="view" id="view-search" aria-labelledby="h-search" hidden>
+    <div class="view__head">
+      <h2 id="h-search">检索诊断</h2>
+      <p class="lede">
+        「没搜到」有四种完全不同的原因。把它们混成一句「没有相关记忆」，就永远不知道为什么它答不上来。
+      </p>
+    </div>
+
+    <form class="searchbar" id="search-form">
+      <input type="search" id="s-q" placeholder="试一句：吊顶 / 建施-03 / 轻钢龙骨 75 系 / 卫生间墙面砖" autocomplete="off" />
+      <button class="btn btn--solid" type="submit">诊断</button>
+    </form>
+
+    <div class="verdict" id="search-verdict" data-status="idle" hidden>
+      <span class="verdict__mark" aria-hidden="true"></span>
+      <div class="verdict__body">
+        <p class="verdict__title" id="verdict-title"></p>
+        <p class="verdict__sub" id="verdict-sub"></p>
+      </div>
+      <span class="verdict__code num" id="verdict-code"></span>
+    </div>
+
+    <div class="diag-cards" id="diag-cards">
+      <article class="diag" data-status="no_related">
+        <span class="diag__mark" aria-hidden="true">○</span>
+        <h3>确实没有</h3>
+        <p class="diag__en num">no_related</p>
+        <p class="diag__what">库里真的没有匹配的记忆。</p>
+        <p class="diag__how">这是正常状态，不是故障。该做的是「让它知道这件事」，而不是换词再搜。</p>
+      </article>
+      <article class="diag" data-status="insufficient_evidence">
+        <span class="diag__mark" aria-hidden="true">△</span>
+        <h3>证据不够</h3>
+        <p class="diag__en num">insufficient_evidence</p>
+        <p class="diag__what">搜到了，但来源缺失或只是推断，撑不住一个确定回答。</p>
+        <p class="diag__how">正确动作是明确说「不确定」，不是拿相似结果硬凑。</p>
+      </article>
+      <article class="diag" data-status="source_missing">
+        <span class="diag__mark" aria-hidden="true">✕</span>
+        <h3>来源丢了</h3>
+        <p class="diag__en num">source_missing</p>
+        <p class="diag__what">记忆还在，但它指向的原始事件已经不在了。</p>
+        <p class="diag__how">这类命中只能当线索——回不到原文核对，就没法确认它当初到底说了什么。</p>
+      </article>
+      <article class="diag" data-status="source_conflict">
+        <span class="diag__mark" aria-hidden="true">⇄</span>
+        <h3>来源冲突</h3>
+        <p class="diag__en num">source_conflict</p>
+        <p class="diag__what">同一个来源，说出两种不同的话。</p>
+        <p class="diag__how">冲突没消解之前，哪一条都不能当可信事实注入。</p>
+      </article>
+    </div>
+
+    <div class="split split--diag">
+      <div class="panel panel--notes">
+        <h3 class="panel__title">这次检索的自述</h3>
+        <dl class="kv" id="diag-kv">
+          <dt>状态</dt><dd>—</dd>
+        </dl>
+        <ul class="notes" id="diag-notes">
+          <li class="empty">还没有检索。</li>
+        </ul>
+      </div>
+      <div class="panel panel--table">
+        <h3 class="panel__title">命中</h3>
+        <table class="grid grid--hits">
+          <colgroup><col class="c-sum" /><col class="c-kind" /><col class="c-score" /></colgroup>
+          <thead>
+            <tr><th scope="col">摘要</th><th scope="col">证据</th><th scope="col">分数</th></tr>
+          </thead>
+          <tbody id="hit-rows">
+            <tr><td colspan="3" class="empty">还没有检索。</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 4. 删除状态 ================= -->
+  <section class="view" id="view-deletions" aria-labelledby="h-deletions" hidden>
+    <div class="view__head">
+      <h2 id="h-deletions">删除状态</h2>
+      <p class="lede">
+        「已删除」不是一件事，是四件：<em>立即屏蔽</em>、<em>在线清理</em>、<em>旧备份到期</em>、<em>外部与其它源</em>。
+        它们不在同一刻完成——第 1 层立刻生效，第 2 层是异步的，第 3 层是未来某个时间点，第 4 层永远需要人确认。
+      </p>
+    </div>
+
+    <div class="split split--del">
+      <div class="panel panel--list">
+        <div class="panel__bar">
+          <label class="inline-f">
+            <span>范围</span>
+            <select id="del-scope">
+              <option value="pending">待清理 / 进行中</option>
+              <option value="completed">清理已完成</option>
+              <option value="all">全部</option>
+            </select>
+          </label>
+          <button class="btn btn--ghost" type="button" id="del-reload">刷新</button>
+        </div>
+        <ul class="delelist" id="del-list">
+          <li class="empty">读取中…</li>
+        </ul>
+        <p class="panel__foot" id="del-note">—</p>
+      </div>
+
+      <div class="panel panel--detail" id="del-detail" aria-live="polite">
+        <div class="empty empty--tall">
+          <span class="empty__mark">◫</span>
+          <p>选一条删除记录</p>
+          <p class="empty__hint">四层会分开显示：哪一层已经做完、哪一层还没开始、哪一层我们根本管不到。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 5. 备份中心 ================= -->
+  <section class="view" id="view-backups" aria-labelledby="h-backups" hidden>
+    <div class="view__head">
+      <h2 id="h-backups">备份中心</h2>
+      <p class="lede">
+        备份是唯一的回退点，也是最容易让已删内容复活的东西。
+        恢复默认<strong>只预演</strong>：要真执行必须同时满足「dryRun=false」+「confirm=RESTORE」+ 服务以 <code class="num">--allow-restore</code> 启动。
+      </p>
+    </div>
+
+    <div class="capbar" id="backup-capbar">
+      <div class="capbar__cell"><span class="capbar__k">备份能力</span><span class="capbar__v num" id="cap-backup">—</span></div>
+      <div class="capbar__cell"><span class="capbar__k">恢复能力</span><span class="capbar__v num" id="cap-restore">—</span></div>
+      <div class="capbar__cell"><span class="capbar__k">备份目录</span><span class="capbar__v num" id="cap-dir">—</span></div>
+      <div class="capbar__cell"><span class="capbar__k">保留策略</span><span class="capbar__v num" id="cap-keep">—</span></div>
+      <div class="capbar__actions">
+        <button class="btn" type="button" id="backup-create">立即备份</button>
+        <button class="btn btn--ghost" type="button" id="backup-reload">刷新</button>
+      </div>
+    </div>
+
+    <div class="split split--backup">
+      <div class="panel panel--table">
+        <table class="grid grid--backups">
+          <colgroup>
+            <col class="c-when" /><col class="c-bkind" /><col class="c-schema" />
+            <col class="c-wm" /><col class="c-size" /><col class="c-integrity" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col">时间</th>
+              <th scope="col">类型</th>
+              <th scope="col">版本</th>
+              <th scope="col">watermark</th>
+              <th scope="col">大小</th>
+              <th scope="col">校验</th>
+            </tr>
+          </thead>
+          <tbody id="backup-rows">
+            <tr><td colspan="6" class="empty">读取中…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel panel--detail" id="backup-detail" aria-live="polite">
+        <div class="empty empty--tall">
+          <span class="empty__mark">◫</span>
+          <p>选一份备份</p>
+          <p class="empty__hint">能看到复校结果、账本水位，以及「恢复到这一份会不会让已经删掉的东西复活」。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 6. 健康 ================= -->
+  <section class="view" id="view-health" aria-labelledby="h-health" hidden>
+    <div class="view__head">
+      <h2 id="h-health">健康</h2>
+      <p class="lede">降级必须被说出来。这里只列<strong>真的观察到的</strong>问题，不是「可能有问题」。</p>
+    </div>
+
+    <div class="stats" id="health-stats">
+      <div class="stat"><span class="stat__k">schema</span><span class="stat__v num" id="h-schema">—</span></div>
+      <div class="stat"><span class="stat__k">库大小</span><span class="stat__v num" id="h-size">—</span></div>
+      <div class="stat"><span class="stat__k">journal</span><span class="stat__v num" id="h-journal">—</span></div>
+      <div class="stat"><span class="stat__k">完整性</span><span class="stat__v num" id="h-integrity">—</span></div>
+      <div class="stat"><span class="stat__k">写入路径</span><span class="stat__v" id="h-writer">—</span></div>
+      <div class="stat"><span class="stat__k">检索路径</span><span class="stat__v" id="h-search-path">—</span></div>
+    </div>
+
+    <div class="panel">
+      <h3 class="panel__title">降级清单</h3>
+      <ul class="degraded" id="health-degraded">
+        <li class="empty">读取中…</li>
+      </ul>
+    </div>
+
+    <div class="panel panel--quiet">
+      <h3 class="panel__title">主账</h3>
+      <dl class="kv kv--tight">
+        <dt>文件</dt><dd class="num" id="h-file">—</dd>
+        <dt>版本</dt><dd class="num" id="h-version">—</dd>
+        <dt>只读</dt><dd class="num" id="h-readonly">—</dd>
+      </dl>
+    </div>
+
+    <div class="panel">
+      <h3 class="panel__title">治理能力（M3）</h3>
+      <dl class="kv kv--tight" id="h-governance">
+        <dt>隔离状态</dt><dd class="num" id="h-isolation">—</dd>
+        <dt>写 / 备份 / 恢复</dt><dd class="num" id="h-caps">—</dd>
+        <dt>删除账本</dt><dd class="num" id="h-ledger">—</dd>
+        <dt>备份目录</dt><dd class="num" id="h-backup-dir">—</dd>
+      </dl>
+      <p class="panel__foot" id="h-facades">—</p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <span>DSH 外置大脑 · <span class="num" id="foot-ver">—</span></span>
+  <span class="foot__sep" aria-hidden="true">·</span>
+  <span>凭据只走 Authorization 头，不进 URL、不进日志</span>
+</footer>
+
+<script src="/assets/app.js" type="module"></script>
+</body>
+</html>

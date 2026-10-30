@@ -1,0 +1,43 @@
+{
+  "name": "@dsh-brain/memory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "主账：schema/迁移/单写入队列/事务/outbox/幂等摄取/删除屏障/备份骨架 + M2 记忆门面与检索集成",
+  "main": "./src/index.js",
+  "bin": {
+    "dsh-brain-migrate": "./bin/migrate.mjs"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./db": "./src/db.js",
+    "./migrator": "./src/migrator.js",
+    "./write-queue": "./src/write-queue.js",
+    "./ledger": "./src/ledger.js",
+    "./outbox": "./src/outbox.js",
+    "./consumers": "./src/consumers.js",
+    "./deletion": "./src/deletion.js",
+    "./deletion-ledger": "./src/deletion-ledger.js",
+    "./deletion-worker": "./src/deletion-worker.js",
+    "./correction": "./src/correction.js",
+    "./backup": "./src/backup.js",
+    "./restore": "./src/restore.js",
+    "./memories": "./src/memories.js",
+    "./sources": "./src/sources.js",
+    "./snapshots": "./src/snapshots.js",
+    "./summaries": "./src/summaries.js",
+    "./context-packages": "./src/context-packages.js",
+    "./search-bridge": "./src/search-bridge.js",
+    "./memory-util": "./src/memory-util.js"
+  },
+  "dependencies": {
+    "@dsh-brain/core": "workspace:*",
+    "@dsh-brain/search": "workspace:*",
+    "@dsh-brain/workspace": "workspace:*"
+  },
+  "files": [
+    "src",
+    "bin"
+  ],
+  "license": "MIT"
+}

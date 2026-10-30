@@ -1,0 +1,48 @@
+{
+  "name": "@dsh-brain/brain-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "外置大脑的工具层：让模型能主动查/记/忘记忆（brain_search / brain_remember / brain_forget）。与 connector 分开发，因为「注入」和「显式检索」的失败模式与权限边界不同。",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "client.js",
+    "console-page.js",
+    "sea-page.js",
+    "cordis.patch.yml"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./console-page": "./console-page.js",
+    "./sea-page": "./sea-page.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "*"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "external-brain",
+    "memory",
+    "tools"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "tests-m4-usage",
+  "private": true,
+  "type": "module",
+  "description": "M4 使用统计测试入口：让 `node --test tests/m4/usage` 可运行（Node 24 不再递归目录参数）",
+  "main": "run-all.mjs"
+}

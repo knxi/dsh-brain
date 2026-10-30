@@ -1,0 +1,30 @@
+{
+  "name": "@dsh-brain/persona",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "系统 4：人格导入与版本冲突、人物模型与关系四维、主动社交候选/评分/仲裁、回复与沉默仲裁",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./util": "./src/util.js",
+    "./import-persona": "./src/import-persona.js",
+    "./persona": "./src/persona.js",
+    "./person-model": "./src/person-model.js",
+    "./relationship": "./src/relationship.js",
+    "./social": "./src/social.js",
+    "./care": "./src/care.js",
+    "./response": "./src/response.js"
+  },
+  "bin": {
+    "dsh-brain-persona-dryrun": "./bin/social-dryrun.mjs"
+  },
+  "dependencies": {
+    "@dsh-brain/core": "workspace:*"
+  },
+  "files": [
+    "src",
+    "bin"
+  ],
+  "license": "MIT"
+}

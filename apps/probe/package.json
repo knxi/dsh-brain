@@ -1,0 +1,24 @@
+{
+  "name": "@dsh-brain/probe",
+  "version": "0.0.0-m0",
+  "private": true,
+  "description": "DSH 外置大脑 M0 接入探针：只记录不干预地观测真实 Cordis 装配点与请求边界。",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./analyze": "./analyze.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "recorder.js",
+    "analyze.mjs",
+    "run.mjs",
+    "cordis.patch.yml"
+  ],
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "license": "MIT"
+}

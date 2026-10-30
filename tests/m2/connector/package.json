@@ -1,0 +1,9 @@
+{
+  "name": "@dsh-brain/connector-tests",
+  "private": true,
+  "type": "module",
+  "description": "M2 连接器测试（假宿主：waterfall / serial / emit 语义 + agent 事件 payload 形状）",
+  "scripts": {
+    "test": "node --test \"*.test.mjs\""
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "dsh-brain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DSH 外置大脑：可检索、可整理、可遗忘、可备份、可观察的外部长期记忆与动态上下文装配层（依据《DSH外置大脑-可执行设计方案-v1.2》）",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "probe": "node apps/probe/run.mjs",
+    "test": "node --test \"tests/**/*.test.mjs\"",
+    "test:contract": "node tests/contract/run-all.mjs",
+    "test:search": "node tests/search/run-all.mjs",
+    "migrate": "node packages/memory/bin/migrate.mjs",
+    "serve": "node apps/server/index.mjs"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "external-brain",
+    "memory"
+  ],
+  "license": "MIT"
+}

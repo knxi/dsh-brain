@@ -1,0 +1,25 @@
+{
+  "name": "@dsh-brain/search",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DSH 外置大脑检索层：FTS5（char-space 主力 + trigram 补充）、自维护 n-gram 兜底、RRF 融合、来源回查与四种检索不足区分",
+  "main": "src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./schema": "./src/schema.mjs",
+    "./tokenize": "./src/tokenize.mjs",
+    "./rrf": "./src/rrf.mjs"
+  },
+  "scripts": {
+    "exp:tokenizers": "node experiments/probe-tokenizers.mjs",
+    "exp:recall": "node experiments/eval-recall.mjs",
+    "exp:bench": "node experiments/bench-scale.mjs",
+    "test": "node --test tests/search"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {},
+  "license": "MIT"
+}

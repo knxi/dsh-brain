@@ -1,0 +1,23 @@
+{
+  "name": "@dsh-brain/cognition",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "系统 3「类脑协同」：显著性标记（杏仁核）/ 空闲反思（默认模式网络）/ 技能校准（小脑）/ 免疫隔离 / 健康监控（脑干）",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./salience": "./src/salience.js",
+    "./reflect": "./src/reflect.js",
+    "./skill": "./src/skill.js",
+    "./immune": "./src/immune.js",
+    "./brainstem": "./src/brainstem.js"
+  },
+  "dependencies": {
+    "@dsh-brain/core": "workspace:*"
+  },
+  "files": [
+    "src"
+  ],
+  "license": "MIT"
+}

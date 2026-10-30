@@ -1,0 +1,7 @@
+{
+  "name": "@dsh-brain/contract-tests",
+  "private": true,
+  "type": "module",
+  "description": "M1 契约测试入口：让 `node --test tests/contract` 可运行（Node 24 不再递归目录参数）",
+  "main": "./run-all.mjs"
+}

@@ -1,0 +1,24 @@
+{
+  "name": "@dsh-brain/context",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "动态上下文装配：检索→构包→Token 预算→built/attached/sent 三级证据（只组装，不写记忆库）",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./build": "./src/build.js",
+    "./budget": "./src/budget.js",
+    "./estimate": "./src/estimate.js",
+    "./render": "./src/render.js",
+    "./canonical": "./src/canonical.js",
+    "./state": "./src/state.js"
+  },
+  "dependencies": {
+    "@dsh-brain/core": "workspace:*"
+  },
+  "files": [
+    "src"
+  ],
+  "license": "MIT"
+}

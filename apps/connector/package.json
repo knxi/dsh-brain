@@ -1,0 +1,46 @@
+{
+  "name": "@dsh-brain/connector",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "DSH 外置大脑连接器：cordis 插件，挂 system-prompt/assemble、agent/pre-step、llm/stream、session/event、agent/turn-stopping，只注入带来源标记的上下文并证明 sent。",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "queue.js",
+    "inject.js",
+    "probe-sent.js",
+    "origin.js",
+    "state.js",
+    "cordis.patch.yml"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./queue": "./queue.js",
+    "./inject": "./inject.js",
+    "./probe-sent": "./probe-sent.js",
+    "./origin": "./origin.js",
+    "./state": "./state.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "external-brain",
+    "memory",
+    "context"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "test": "node --test \"../../tests/m2/connector/*.test.mjs\"",
+    "smoke": "node smoke.mjs"
+  }
+}

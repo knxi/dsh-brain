@@ -1,0 +1,7 @@
+{
+  "name": "@dsh-brain/m3-backup-tests",
+  "private": true,
+  "type": "module",
+  "description": "M3 备份恢复契约测试入口（Node 24 的 node --test <目录> 需要一个可解析的 main）",
+  "main": "./run-all.mjs"
+}
