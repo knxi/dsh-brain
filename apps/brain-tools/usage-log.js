@@ -75,11 +75,19 @@ function toNumber(value) {
  * 为什么不让调用方直接 JSON.stringify：日志是长期资产，字段形状必须由这里说了算，
  * 否则半年后各种形状混在一起，聚合逻辑会变成一堆防御性判断。
  *
+ * `channel` 的三个取值是有意分开的（2026-10-30 深夜补）：
+ * - `tool`   模型主动检索
+ * - `console` 人在控制台检索
+ * - `write`  **写入/遗忘**（brain_remember / brain_forget）
+ *   之前只有前两个，于是「查了几次」有数、「记了几次/忘了几次」只能事后倒推
+ *   producer 字段和账本文件——写入侧连一次调用都没有留痕，那不是观测，是盲区。
+ *   query 对写入恒为 null：记忆正文不进使用日志（隐私），要分的类型放 op。
+ *
  * @param {Record<string, any>} raw
  * @param {number} [now]
  * @returns {{
- *   ts: string, at: number, channel: 'tool'|'console'|'unknown', query: string|null,
- *   limit: number|null, asOf: string|null, ok: boolean, code: string|null,
+ *   ts: string, at: number, channel: 'tool'|'console'|'write'|'unknown', op: string|null,
+ *   query: string|null, limit: number|null, asOf: string|null, ok: boolean, code: string|null,
  *   hitCount: number, hitIds: string[], status: string|null,
  *   primaryLaneHit: boolean|null, degraded: string|null, durationMs: number|null,
  *   sessionId: string|null, usedLater: null, usedLaterWhy: string
@@ -88,7 +96,9 @@ function toNumber(value) {
 export function normalizeUsageEntry(raw, now = Date.now()) {
   const source = raw && typeof raw === 'object' ? raw : {}
   const channelInput = typeof source.channel === 'string' ? source.channel : 'unknown'
-  const channel = channelInput === 'tool' || channelInput === 'console' ? channelInput : 'unknown'
+  const channel = channelInput === 'tool' || channelInput === 'console' || channelInput === 'write'
+    ? channelInput
+    : 'unknown'
   const hitIdsRaw = Array.isArray(source.hitIds) ? source.hitIds : []
   const hitIds = hitIdsRaw
     .filter((id) => typeof id === 'string' && id.length > 0)
@@ -101,6 +111,8 @@ export function normalizeUsageEntry(raw, now = Date.now()) {
     ts: typeof source.ts === 'string' && source.ts ? source.ts : new Date(now).toISOString(),
     at: at == null ? now : at,
     channel,
+    // 写入侧的类型（remember 的 kind / forget）。检索侧恒为 null。
+    op: clip(source.op, 20),
     query: clip(source.query, MAX_QUERY_CHARS),
     limit,
     asOf: clip(source.asOf, 40),
@@ -252,6 +264,8 @@ export function summarizeUsage(entries, opts = {}) {
   /** @type {Record<string, number>} */
   const byChannel = {}
   /** @type {Record<string, number>} */
+  const byOp = {}
+  /** @type {Record<string, number>} */
   const byStatus = {}
   /** @type {Map<string, { query: string, count: number, okCount: number, hits: number, zero: number, failed: number, lastAt: number }>} */
   const queryMap = new Map()
@@ -268,6 +282,9 @@ export function summarizeUsage(entries, opts = {}) {
   let zeroHitCount = 0
   let degradedCount = 0
   let laneMissCount = 0
+  /** 检索类调用数（tool + console）。命中率的分母只能用这个，见循环里的注释。 */
+  let retrievalCount = 0
+  let retrievalOkCount = 0
   let lastAt = 0
 
   for (const e of list) {
@@ -281,6 +298,25 @@ export function summarizeUsage(entries, opts = {}) {
     const isOk = e.ok !== false
     if (isOk) okCount += 1
     else failCount += 1
+
+    // 「写了几次、忘了几次」和「查了几次」是两种调用，不能混进同一套指标：
+    // 写入成功一次不等于「命中一次」，混进命中率分母会把命中率算成好看但没意义的数。
+    // 只有显式的 `write` 通道被排除在检索指标之外；老日志没有 channel 字段
+    // （normalize 成 unknown）仍按检索计——向后兼容，不能让历史数据因为加字段而消失。
+    const isRetrieval = channel !== 'write'
+    if (!isRetrieval) {
+      if (typeof e.op === 'string' && e.op) byOp[e.op] = (byOp[e.op] || 0) + 1
+      const day = localDayKey(at)
+      const curDay = dayMap.get(day) || { date: day, count: 0, okCount: 0, hits: 0, zero: 0, failed: 0 }
+      curDay.count += 1
+      if (isOk) curDay.okCount += 1
+      else curDay.failed += 1
+      dayMap.set(day, curDay)
+      continue
+    }
+
+    retrievalCount += 1
+    if (isOk) retrievalOkCount += 1
 
     const hits = Number(e.hitCount) || 0
     // 命中 / 零命中**只统计跑完的检索**。
@@ -368,16 +404,20 @@ export function summarizeUsage(entries, opts = {}) {
      * 检索报错是可靠性问题，混进分母会让命中率跟着故障率跳，看不出检索质量。
      * 要含失败的保守口径，看 callHitRate。
      */
-    hitRate: okCount > 0 ? Math.round((hitCount / okCount) * 1000) / 1000 : null,
-    /** 保守口径：命中次数 / 全部调用次数（含失败）。 */
-    callHitRate: total > 0 ? Math.round((hitCount / total) * 1000) / 1000 : null,
+    hitRate: retrievalOkCount > 0 ? Math.round((hitCount / retrievalOkCount) * 1000) / 1000 : null,
+    /** 保守口径：命中次数 / 全部检索调用次数（含失败）。 */
+    callHitRate: retrievalCount > 0 ? Math.round((hitCount / retrievalCount) * 1000) / 1000 : null,
     byChannel,
+    /** 写入/遗忘的类型分布（remember 的 kind、forget）。检索侧不进这里。 */
+    byOp,
+    /** 检索类调用数（tool + console）与全部调用数的差额就是写入/遗忘。 */
+    retrievalCount,
     byStatus,
     degradedCount,
-    degradedRate: okCount > 0 ? Math.round((degradedCount / okCount) * 1000) / 1000 : null,
+    degradedRate: retrievalOkCount > 0 ? Math.round((degradedCount / retrievalOkCount) * 1000) / 1000 : null,
     /** 主路没命中、靠弱检索救回来的次数。这是最危险的静默降级指标。 */
     laneMissCount,
-    laneMissRate: okCount > 0 ? Math.round((laneMissCount / okCount) * 1000) / 1000 : null,
+    laneMissRate: retrievalOkCount > 0 ? Math.round((laneMissCount / retrievalOkCount) * 1000) / 1000 : null,
     timing: {
       avg,
       p50: percentile(sorted, 0.5),

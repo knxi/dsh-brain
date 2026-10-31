@@ -83,6 +83,7 @@ test('1. appendUsage 追加后能读回，字段形状由 normalizeUsageEntry �
 
   const e = read.entries[0];
   // 字段清单写死：多一个少一个都算契约变更，必须显式改测试。
+  // 2026-10-30 加 `op`：写入/遗忘的类型（remember 的 kind / forget），检索侧恒为 null。
   assert.deepEqual(Object.keys(e).sort(), [
     'asOf',
     'at',
@@ -94,6 +95,7 @@ test('1. appendUsage 追加后能读回，字段形状由 normalizeUsageEntry �
     'hitIds',
     'limit',
     'ok',
+    'op',
     'primaryLaneHit',
     'query',
     'sessionId',

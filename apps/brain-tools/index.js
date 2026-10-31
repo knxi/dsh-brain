@@ -22,11 +22,10 @@
  */
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { request as httpRequest } from 'node:http'
-import { renderConsolePage } from './console-page.js'
-import { renderSeaPage } from './sea-page.js'
-import { renderUsagePage } from './usage-page.js'
-import { renderConflictsPage } from './conflicts-page.js'
-import { renderEntitiesPage } from './entities-page.js'
+import { createHash } from 'node:crypto'
+import { statSync, mkdirSync, appendFileSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { appendUsage, computeCoverage, readUsageLog, summarizeUsage, DEFAULT_WINDOW_DAYS } from './usage-log.js'
 import {
   createUsedLaterTracker,
@@ -49,6 +48,42 @@ import {
 
 export const name = 'brain-tools'
 export const inject = ['tools', 'webServer']
+
+/**
+ * 页面模块热重载（2026-10-31）。
+ *
+ * 问题：页面是 ESM，import 之后进模块缓存，改完文件不重启就一直是旧版本——
+ * 每次调样式/文案都要重启整个 DSH（5 秒 + 断掉当前会话），代价太大。
+ *
+ * 做法：按文件 **mtime** 给 import 加版本参数（./persona-page.js?v=1793...）。
+ * ESM 的缓存键是解析后的 URL，带不同 query 就是不同模块 —— 改完文件下一次请求自动用新版。
+ * 同文件的旧版本会被清出 Map，不会无限增长。
+ *
+ * 边界（诚实说明）：
+ * - 只热重载**页面渲染模块**（纯函数、无状态、只接收 dbPath/logPath 这类参数）；
+ * - 依赖池、DB 门面、工具注册、钩子**不会**重载，那些改了照样要重启；
+ * - 读不到 mtime 时退化成普通 import（行为与以前一致），不会因此报错。
+ */
+const pageModuleCache = new Map()
+const loadPageModule = async (fileName) => {
+  const fileUrl = new URL('./' + fileName, import.meta.url)
+  let version = '0'
+  try {
+    version = String(Math.floor(statSync(fileURLToPath(fileUrl)).mtimeMs))
+  } catch {
+    /* 读不到 mtime：不缓存，直接 import */
+  }
+  if (version === '0') return import(fileUrl.href)
+  const key = fileName + '@' + version
+  const cached = pageModuleCache.get(key)
+  if (cached !== undefined) return cached
+  for (const existing of [...pageModuleCache.keys()]) {
+    if (existing.startsWith(fileName + '@') && existing !== key) pageModuleCache.delete(existing)
+  }
+  const promise = import(fileUrl.href + '?v=' + version)
+  pageModuleCache.set(key, promise)
+  return promise
+}
 
 /** 控制台路由前缀：挂在 DSH 自己的 webServer 上，同源同端口，不额外起服务。 */
 const ROUTE = '/dsh-brain'
@@ -174,6 +209,199 @@ export function apply(ctx, config) {
 
   /** @type {Promise<any> | null} */
   let brainPromise = null
+  // ── 主动社交送达通道（2026-10-31 凌晨，已接真实 QQ）──────────────
+  // 页面上「外发能力 无（只含 dry_run）」的直接原因：调 openBrain 时没传 outboundChannel。
+  // `social.send(mode:'approved')` 在没有通道时只会记一条 `no_channel_configured` 失败。
+  //
+  // 现在接两层，**先外发、失败回落本机**：
+  //   1) dsh-im 主动投递（本机 QQ 机器人，目标已配：botId=qq_7987… / targetId=tgt_dcca…）
+  //      —— 优先用同 Host 的 `ctx.dshIm.send()` 服务；拿不到服务就走本机 HTTP
+  //      `POST /api/dsh-im/delivery/messages`（dsh-im 文档里的官方主动投递入口）。
+  //   2) 本机 console 兜底：任何一步失败都追加到 data/logs/social-outbox.jsonl 并**如实返回失败**
+  //      （ok:false + reason），让门面记一条 ok=0 的发送记录——不许把「没发出去」记成成功。
+  //
+  // 之所以能直接外发：主人在 2026-10-31 凌晨明确要求「功能要完整可用、不要什么边界」，
+  // 并把它接到的通道就是**发给他本人的 QQ 单聊**（不是群、不是第三方）。
+  // 发送仍受三层闸门约束：paused / social.enabled / dailyCap + quietHours（均在门面里）。
+  const socialOutboxPath = (config && config.socialOutboxPath) || 'E:/ds-h/dsh-brain/data/logs/social-outbox.jsonl'
+  /** dsh-im 的机器人调用标识。**不写死**（2026-10-31 改）：这个仓库是 public，
+   *  本机私有标识不该出现在公开代码里。首选读 `data/persona/channel.json`
+   *  （loadChannelConfig），其次 config / 环境变量；都没有就留空，让人自己配。 */
+  const imBotId = (config && config.imBotId) || process.env.BRAIN_IM_BOT_ID || ''
+  const imTargetId = (config && config.imTargetId) || process.env.BRAIN_IM_TARGET_ID || ''
+  /** 主动投递 HTTP 入口的基地址（同 Host 的 WebServer）。 */
+  const imBaseUrl = (config && config.imBaseUrl) || 'http://127.0.0.1:3080'
+
+  // ── 通道配置（2026-10-31）：不再写死一个 QQ，可换任意 dsh-im 目标 ──────
+  // 存文件而不是存库：这是一条「运行参数」，不是业务事实；改完立刻生效，不需要迁移。
+  // 结构：{ botId, targetId, channel, label }。文件不存在时用上面的默认值（当前 QQ 单聊）。
+  const channelConfigPath = (config && config.channelConfigPath) || 'E:/ds-h/dsh-brain/data/persona/channel.json'
+  /** @returns {{ botId: string, targetId: string, channel: string, label: string }} */
+  const loadChannelConfig = () => {
+    try {
+      const parsed = JSON.parse(readFileSync(channelConfigPath, 'utf8'))
+      if (parsed && typeof parsed.botId === 'string' && parsed.botId
+        && typeof parsed.targetId === 'string' && parsed.targetId) {
+        return {
+          botId: parsed.botId,
+          targetId: parsed.targetId,
+          channel: typeof parsed.channel === 'string' && parsed.channel ? parsed.channel : 'im',
+          label: typeof parsed.label === 'string' ? parsed.label : '',
+        }
+      }
+    } catch {
+      /* 没有配置就用默认 */
+    }
+    return { botId: imBotId, targetId: imTargetId, channel: 'qq', label: 'QQ 单聊（默认）' }
+  }
+  /** @param {{ botId: string, targetId: string, channel: string, label: string }} next */
+  const saveChannelConfig = (next) => {
+    mkdirSync(dirname(channelConfigPath), { recursive: true })
+    writeFileSync(channelConfigPath, JSON.stringify(next, null, 2), 'utf8')
+  }
+
+  /**
+   * 先外发（当前通道），失败才落本机。
+   * @param {{ channel?: string, text?: string, candidate?: any, personId?: string }} input
+   * @returns {Promise<{ ok: boolean, externalId?: string, error?: string }>}
+   */
+  const outboundChannel = async (input) => {
+    const text = String(input?.text ?? '')
+    if (!text.trim()) return { ok: false, error: 'empty_text' }
+    // 每次发送现读配置：改完通道立即生效，不用重启。
+    const target = loadChannelConfig()
+
+    // 1) 同 Host 的 dsh-im 插件服务（最正规：不经过 HTTP，也不依赖端口）
+    try {
+      // **不能写 `ctx.dshIm`**：cordis 对未在 `inject` 里声明的服务属性直接抛
+      // `cannot get property "dshIm" without inject`。dsh-im 是**可选**依赖，不能进 inject
+      // （没装它的机器会连插件都起不来），只能显式 get。
+      const svc = typeof ctx.get === 'function' ? ctx.get('dshIm') : null
+      if (svc && typeof svc.send === 'function') {
+        const result = await svc.send(target.botId, target.targetId, text)
+        if (result && result.sent === true) {
+          return { ok: true, externalId: `dsh-im:svc:${Date.now()}` }
+        }
+      }
+    } catch (error) {
+      // 不在这里判失败：服务态可能没注册，回落到 HTTP 再试一次。
+      console.error('[brain-tools] dsh-im 服务投递失败，回落 HTTP：', error instanceof Error ? error.message : String(error))
+    }
+
+    // 2) HTTP 主动投递（dsh-im 官方入口，无鉴权、只应在本机用）
+    try {
+      const res = await fetch(`${imBaseUrl}/api/dsh-im/delivery/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ botId: target.botId, targetId: target.targetId, text, format: 'plain' }),
+        signal: AbortSignal.timeout(8000),
+      })
+      if (res.ok) {
+        const body = await res.json().catch(() => null)
+        if (body && body.sent === true) {
+          return { ok: true, externalId: `dsh-im:http:${Date.now()}` }
+        }
+      }
+      const detail = await res.text().catch(() => '')
+      console.error(`[brain-tools] dsh-im HTTP 投递失败 HTTP ${res.status}：${detail.slice(0, 200)}`)
+    } catch (error) {
+      console.error('[brain-tools] dsh-im HTTP 投递异常：', error instanceof Error ? error.message : String(error))
+    }
+
+    // 3) 兜底：落本机并**如实报失败**（门面会记 ok=0，页面显示「没发出去：im_channel_unavailable」）
+    try {
+      const line = JSON.stringify({
+        ts: new Date().toISOString(),
+        channel: String(input?.channel ?? 'console'),
+        personId: input?.personId == null ? null : String(input.personId),
+        candidateId: input?.candidate && input.candidate.id != null ? String(input.candidate.id) : null,
+        source: input?.candidate && input.candidate.source != null ? String(input.candidate.source) : null,
+        text: text.slice(0, 2000),
+        note: 'IM 投递失败后的本机落盘：这条**没有发出去**，只作事后核对',
+        ok: false,
+      })
+      mkdirSync(dirname(socialOutboxPath), { recursive: true })
+      appendFileSync(socialOutboxPath, line + '\n', 'utf8')
+    } catch {
+      /* 落盘失败也不改结论：结论已经是「没发出去」 */
+    }
+    return { ok: false, error: 'im_channel_unavailable' }
+  }
+
+  // ── 会话信号索引（care / commitment 的真实来源）───────────────
+  // 社交门面的 care/commitment 只查记忆库，而「身体/情绪线索」「随口交代的事」本来就不会
+  // 被记成长期记忆，于是这两类在真实数据上永远 `no_*_evidence`。
+  // 索引器（packages/persona/src/session-signal-index.js）扫真实会话产出信号缓存，
+  // 这里只负责**懒读**：5 分钟内复用，读不到返回 null（门面据此如实说「没有依据」）。
+  const sessionSignalCachePath = (config && config.sessionSignalCachePath)
+    || 'E:/ds-h/dsh-brain/data/persona/session-signals.json'
+  /** @type {any|null} */
+  let sessionSignalCache = null
+  let sessionSignalCacheAt = 0
+  const readSessionSignals = () => {
+    try {
+      if (sessionSignalCache !== null && Date.now() - sessionSignalCacheAt < 5 * 60 * 1000) {
+        return sessionSignalCache
+      }
+      const parsed = JSON.parse(readFileSync(sessionSignalCachePath, 'utf8'))
+      sessionSignalCache = parsed && typeof parsed === 'object' ? parsed : null
+      sessionSignalCacheAt = Date.now()
+      return sessionSignalCache
+    } catch {
+      return null
+    }
+  }
+
+  /** openBrain 返回的门面。hooks 用闭包延迟取（hook 只在执行那一刻才调用）。 */
+  /** @type {any} */
+  let brainRef = null
+
+  /**
+   * 内置动作接线（2026-10-31）。不传的话六个动作一律 `hook_missing`——审计 A 项点名的缺口。
+   * 只接**有真实后端**的那几个：硬接一个没有实现的，等于让审计里出现假成功。
+   * 目前只有 `skill_rebuild` 没接：cognition 里没有「重算技能统计」的入口
+   * （`recordResult` 是记一次执行结果，不是重算），硬接只会造一个假动作。
+   */
+  const directiveHooks = {
+    // 整理记忆索引：重建三套索引（FTS char / trigram / ngram）。
+    memoryMaintenance: async () => {
+      const out = await brainRef.memories.reindexAll()
+      return { ok: true, summary: `记忆索引已重建（${JSON.stringify(out).slice(0, 120)}）` }
+    },
+    // 重建检索索引：只保证检索桥的表在。
+    indexRebuild: async () => {
+      await brainRef.searchBridge.ensureSchema()
+      return { ok: true, summary: '检索索引结构已就绪' }
+    },
+    // 触发一次反思：门面自己判 reflection.enabled / paused，关着就零副作用。
+    reflectionRun: async () => {
+      const out = await brainRef.cognition.reflect.runOnce()
+      const inside = JSON.stringify(out ?? {})
+      return { ok: true, summary: `反思跑完：${inside.slice(0, 160)}` }
+    },
+    // 归并健康告警：跑一次全部体检，新告警建行、恢复的自动 resolved。
+    alertSweep: async () => {
+      const out = await brainRef.cognition.brainstem.checkOnce({ scopeId })
+      return { ok: true, summary: `体检完成：${JSON.stringify(out ?? {}).slice(0, 160)}` }
+    },
+    // 校验最近一份备份：没有备份服务就如实失败，不假装验过。
+    backupVerify: async () => {
+      const backup = brainRef.backup
+      if (!backup || typeof backup.listSnapshots !== 'function') {
+        return { ok: false, reason: 'backup_not_configured', summary: '没有配置备份服务（openBrain 未传 backupDir）' }
+      }
+      const [latest] = backup.listSnapshots({ limit: 1 }) ?? []
+      const backupId = latest && (latest.backup_id ?? latest.backupId)
+      if (!backupId) return { ok: false, reason: 'no_backup', summary: '备份表里没有记录' }
+      const verdict = await backup.verifySnapshot({ backup_id: backupId })
+      return {
+        ok: verdict?.ok === true,
+        reason: verdict?.ok === true ? 'ok' : 'backup_verify_failed',
+        summary: `备份 ${backupId} 校验${verdict?.ok === true ? '通过' : '未通过'}`,
+      }
+    },
+  }
+
   /**
    * 懒加载 + 单例。加载失败不缓存失败结果，下次还能重试。
    */
@@ -183,13 +411,115 @@ export function apply(ctx, config) {
         const mod = await import('@dsh-brain/memory')
         const openBrain = mod.openBrain
         if (typeof openBrain !== 'function') throw new Error('@dsh-brain/memory 没有导出 openBrain')
-        return openBrain({ dbPath: storePath, migrationsDir, bindings: { scope_id: scopeId, person_id: personId } })
+        const brain = openBrain({
+          dbPath: storePath,
+          migrationsDir,
+          bindings: { scope_id: scopeId, person_id: personId },
+          // 送达通道：先 dsh-im（QQ 单聊），失败回落本机落盘并如实报失败。
+          outboundChannel,
+          // 会话信号：care / commitment 在记忆库里查不到时的真实回落来源。
+          signals: readSessionSignals,
+          // 自主指令的内置动作接线。见上方 directiveHooks 的说明。
+          directiveHooks,
+        })
+        brainRef = brain
+        return brain
       })().catch((error) => {
+        brainRef = null
         brainPromise = null
         throw error
       })
     }
     return brainPromise
+  }
+
+  // ── 任务焦点（2026-10-31）────────────────────────────────
+  // 主人原话：「我要干 a 事情，你检索 a 相关的记忆/技能，其他的无视」。
+  //
+  // 三个决策：
+  //   ①A+B 来源：你说「现在做 X」时我从消息里推（规则，不猜模型心思）；
+  //   ②A+B 范围：影响检索排序 **和** 每轮注入的提示；
+  //   ③A   **软焦点，不硬过滤**：不相关的记忆降权但仍然返回，
+  //        并在结果里如实标「另有 N 条因偏离当前焦点被降权」。
+  //
+  // 为什么不能硬过滤：漏掉的东西**不会自己告诉你**。检索不准是「看到次的东西」，
+  // 焦点漏是「根本不知道有」——后者没法靠再查一次补救。
+  //
+  // 存的是 workspace 的 attention_focus（它本来就是这个用途，只是一直没人写）。
+  const FOCUS_TTL_MS = 4 * 60 * 60 * 1000
+  /** 从你这句话里推焦点的规则：只认「要做/在做/帮我做…」这种明确的意图句。 */
+  // 注意 `\s*`：中文和英文/数字之间通常有空格（「现在做 DSH 插件」），
+  // 卡死「紧跟」会把这类最常用的说法全漏掉（实测踩过）。
+  const FOCUS_INFER = /(?:我要做|我在做|现在做|接下来做|帮我做|帮我搞|这次做|开始做|先做|要干|在干|搞定)\s*([^，。！？；,.!?;]{2,24})/u
+  /** 中文二元组：用来算「这条记忆跟当前任务像不像」。 */
+  const textBigrams = (input) => {
+    const clean = String(input ?? '').replace(/[\s\p{P}\p{S}]/gu, '')
+    const out = new Set()
+    for (let i = 0; i + 2 <= clean.length; i += 1) out.add(clean.slice(i, i + 2))
+    return out
+  }
+  /**
+   * 读当前任务焦点。拿不到 / 过期 / 不是 task 类 一律返回 null——
+   * 焦点是「可选的加速器」，判不出来就当没有，不让它影响正常检索。
+   */
+  const readTaskFocus = () => {
+    try {
+      const ws = brainRef && brainRef.workspace
+      if (!ws || typeof ws.getFocus !== 'function') return null
+      const focus = ws.getFocus(scopeId)
+      if (!focus || focus.expired === true) return null
+      if (String(focus.kind) !== 'task' || !focus.label) return null
+      return { label: String(focus.label), expiresAt: focus.expiresAt ?? null, ref: focus.ref ?? null }
+    } catch {
+      return null
+    }
+  }
+  /** 设/续期任务焦点。同一 ref 会续期而不是抢占。 */
+  const setTaskFocus = async (label) => {
+    const ws = brainRef && brainRef.workspace
+    if (!ws || typeof ws.acquireFocus !== 'function') return null
+    const clean = String(label ?? '').trim().slice(0, 60)
+    if (clean.length === 0) return null
+    try {
+      return await ws.acquireFocus({
+        kind: 'task',
+        ref: `task:${clean}`,
+        label: clean,
+        priority: 60,
+        ttlMs: FOCUS_TTL_MS,
+        source: 'brain-tools',
+        reason: '对话里说出的当前任务',
+        scopeId,
+      })
+    } catch {
+      return null
+    }
+  }
+  /** 清掉任务焦点（主人说「做完了」/「先不管这个」时用）。 */
+  const clearTaskFocus = async () => {
+    const ws = brainRef && brainRef.workspace
+    if (!ws || typeof ws.releaseFocus !== 'function') return null
+    try {
+      return await ws.releaseFocus({ scopeId })
+    } catch {
+      return null
+    }
+  }
+  /** 消息里有没有明确的「做完了」——有就清焦点。 */
+  const FOCUS_DONE = /(?:做完了|搞定了|完事了|先不管这个|这个先放|换件事|不做了)/u
+  /** 从一句用户原话里推任务焦点；推不出来返回 null（不猜）。 */
+  const inferTaskFocus = (text) => {
+    const raw = String(text ?? '')
+    if (raw.length === 0) return null
+    if (raw.includes('[外置大脑 · 运行时提示]')) return null
+    if (FOCUS_DONE.test(raw)) return { clear: true, label: null }
+    const hit = FOCUS_INFER.exec(raw)
+    if (hit === null) return null
+    // 剥掉口语修饰：「帮我搞**一下**微信生态的数据」→「微信生态的数据」。
+    // 不剥的话焦点里带着「一下」，算相似度时会污染二元组。
+    const label = hit[1].replace(/^[的地得]+/u, '').replace(/^(?:一下|一个|个|下)/u, '').trim()
+    if (label.length < 2) return null
+    return { clear: false, label }
   }
 
   const tools = ctx.tools || (typeof ctx.get === 'function' ? ctx.get('tools') : null)
@@ -210,13 +540,24 @@ export function apply(ctx, config) {
   const autoExtractor = createAutoExtractor({
     logPath: autoExtractLogPath,
     enabled: autoExtractEnabled,
-    maxPerTurn: config && config.autoExtractPerTurn != null ? Number(config.autoExtractPerTurn) : 1,
+    // 2026-10-31 放宽（决策①A）：每轮 1 条 → 2 条，配合 auto-extract.js 里新增的两条规则。
+    maxPerTurn: config && config.autoExtractPerTurn != null ? Number(config.autoExtractPerTurn) : 2,
   })
   /**
    * 已判定过的 turn。同一个 turn 重复 judge 会重复产候选、重复扣配额
    * （模块文档点名过），所以在这里按 `(sessionId, turn)` 去重。有界。
    */
   const judgedTurns = new Set()
+  /**
+   * `sessionId → 最近一个 turn`。
+   *
+   * 为什么需要它（2026-10-30 实测根因）：宿主 `user/message` 事件的 data 里**没有 turn**
+   * （顶层键只有 content/source/role/id；只有 turn/start、turn/end、assistant/message 带 turn）。
+   * 于是原来 `data.turn` 恒为 null → 缓存成 `{turn:null}` → turn/end 拿数字去 filter
+   * 一条都匹配不上 → judgeTurn 静默返回空 → 永远不落 record、日志文件都不建。
+   * 这就是「自动提取 0 触发」的根因：不是规则不命中，也不是写盘失败。
+   */
+  const latestTurn = new Map()
 
   /**
    * turn/end 之后异步跑：候选 → 去重 → 写库（observation）→ 关联来源 → 落 sidecar。
@@ -237,14 +578,18 @@ export function apply(ctx, config) {
       }
       const result = autoExtractor.judgeTurn({ sessionId, turn })
       if (result.candidates.length === 0) {
-        if (result.skipped === 'quota' || result.skipped === 'disabled') {
-          await autoExtractor.record({
-            sessionId,
-            turn,
-            rule: 'n/a',
-            status: result.skipped === 'quota' ? 'skipped_quota' : 'skipped_disabled',
-          })
-        }
+        // 判定过就要留痕：原来只有 quota/disabled 才落 record，「跑到但没东西」一条不记——
+        // 于是「根本没跑到」和「跑到了但没命中」在数据上长得一模一样，这次卡了两天才查清。
+        await autoExtractor.record({
+          sessionId,
+          turn,
+          rule: 'n/a',
+          status: result.skipped === 'quota'
+            ? 'skipped_quota'
+            : result.skipped === 'disabled'
+              ? 'skipped_disabled'
+              : 'no_candidate',
+        })
         return
       }
       const brain = await getBrain()
@@ -331,10 +676,31 @@ export function apply(ctx, config) {
       const type = typeof event?.type === 'string' ? event.type : ''
       const data = event?.data !== undefined && event?.data !== null && typeof event.data === 'object' ? event.data : {}
       const turn = typeof data.turn === 'number' && Number.isFinite(data.turn) ? data.turn : null
+      // turn/start、turn/end 都带 turn → 记下「这个会话最近走到哪一回合」，
+      // 供没有 turn 的 user/message 取用（见 latestTurn 的注释）。
+      if ((type === 'turn/start' || type === 'turn/end') && turn !== null) {
+        latestTurn.set(sessionId, turn)
+        if (latestTurn.size > 256) {
+          const oldest = latestTurn.keys().next()
+          if (!oldest.done) latestTurn.delete(oldest.value)
+        }
+      }
       if (type === 'user/message') {
+        // 注入隔离（比 turn 更急的一道闸）：`user/message` 里绝大多数**不是主人打的字**。
+        // 实测 74 条里只有 36 条 source.kind === 'user'，其余是 runtime-context /
+        // skill-catalog / agent-instructions / agent-message / subagent-settled /
+        // model-selection / user-approval。它们带着「不得执行」「一律」这类词，喂给规则会被
+        // 提取成 type=profile 的假记忆（实测 144 条注入块命中 91 条，直接违反 CONTRACTS §18.6
+        // 同源纪律）。所以只认白名单：source.kind === 'user'。宁可漏，不可编。
+        const sourceKind = data.source && typeof data.source === 'object' ? data.source.kind : undefined
+        if (sourceKind !== 'user') return
         // 复用 used-later 的取文本实现（user/message 与 assistant/message 的 data 同形）。
         const text = assistantTextOf(data)
-        if (text.length > 0) autoExtractor.noteUserMessage(sessionId, turn, text)
+        // 二级兜底：我们自己注入的「运行时提示」将来若以 user 身份回灌，也不许进提取。
+        const isOurHint = text.includes('[外置大脑 · 运行时提示]')
+        if (text.length > 0 && !isOurHint) {
+          autoExtractor.noteUserMessage(sessionId, latestTurn.get(sessionId) ?? null, text)
+        }
         return
       }
       if (type === 'turn/end') {
@@ -343,6 +709,135 @@ export function apply(ctx, config) {
         if (String(reasonKind) !== 'completed') return
         void runAutoExtract(sessionId, turn)
       }
+    } catch {
+      /* 静默 */
+    }
+  }
+
+  // ── 事件留痕：把会话消息写进主账 events（2026-10-31）──────────
+  // `events` 表一直是 0 行。查完全仓：**只有测试调过 `ledger.ingestEvent`，生产一次都没接**。
+  // 而反思里「承诺 / 知识缺口」两类候选全靠它扫 `payload_text`——
+  // 没有 events，就没有「学习层」的素材来源。这是那条链的第一块砖。
+  //
+  // 只做留痕：主人的话和我的回话按原样写进主账（截断到 4000 字），不推断、不加工、不改写。
+  // 要不要用、怎么用，由反思那边自己判断。privacy 用 envelope 的默认值 'private'，
+  // 跟记忆库同一级别；不往 events 里写任何凭据。
+  const eventIngestEnabled = !(config && config.eventIngest === false)
+    && String(process.env.BRAIN_EVENT_INGEST || '').toLowerCase() !== 'off'
+  /** payload_text 上限：够反思做词面匹配，又不至于把整篇长回复塞进库。 */
+  const INGEST_MAX_TEXT = 4000
+  /** 连续摄取失败计数：只报前 3 次，埋点坏了不能变成日志洪水。 */
+  let ingestFailures = 0
+  /**
+   * 每会话的摄取序号。**同一条消息重发时必须复用旧序号**：
+   * ledger 判幂等用的是 `eventContentFingerprint`，而它**包含 `source_seq`**
+   * （见 ledger.js:224 与 envelope.js 的 eventContentFingerprint 注释）——
+   * 序号一变，同一条消息就会被判成「同一源事件 ID 但正文不同」直接抛 ConflictError。
+   * 所以序号不能取时间戳，必须按内容指纹复用。
+   */
+  const ingestSeq = new Map()
+  /** sessionId → Map(正文指纹 → 已分配的序号)。 */
+  const ingestSeen = new Map()
+  const ingestSessionEvent = (session, event) => {
+    try {
+      const sessionId = typeof session?.id === 'string' && session.id ? session.id : null
+      if (sessionId === null) return
+      const type = typeof event?.type === 'string' ? event.type : ''
+      if (type !== 'user/message' && type !== 'assistant/message') return
+      const data = event?.data !== undefined && event.data !== null && typeof event.data === 'object' ? event.data : {}
+      // 注入隔离：`user/message` 里绝大多数是注入块（runtime-context / skill-catalog …），
+      // 只认主人手打的字——跟自动提取同一道闸，理由也一样：注入块不是主人说的话。
+      if (type === 'user/message') {
+        const sourceKind = data.source && typeof data.source === 'object' ? data.source.kind : undefined
+        if (sourceKind !== 'user') return
+      }
+      const text = assistantTextOf(data)
+      if (text.length === 0) return
+      if (text.includes('[外置大脑 · 运行时提示]')) return
+      const body = text.length > INGEST_MAX_TEXT ? text.slice(0, INGEST_MAX_TEXT) : text
+      // 幂等键：同一条消息重发时正文指纹相同 → 撞唯一索引
+      // `(source_system, scope_id, source_event_id)` → 落 duplicate，不会重复入库。
+      const fingerprint = createHash('sha1').update(body).digest('hex').slice(0, 16)
+      const turn = latestTurn.get(sessionId) ?? null
+      // 序号分配：同一条消息重发时复用旧序号，让 ledger 走幂等分支而不是冲突分支。
+      let seen = ingestSeen.get(sessionId)
+      if (seen === undefined) {
+        seen = new Map()
+        ingestSeen.set(sessionId, seen)
+        // 有界：会话数超限就驱逐最早的那个（序号与指纹都是运行期状态，丢了只是
+        // 重发时多走一次「新序号」，不影响正确性）。
+        if (ingestSeen.size > 256) {
+          const oldest = ingestSeen.keys().next()
+          if (!oldest.done) ingestSeen.delete(oldest.value)
+        }
+      }
+      let sourceSeq = seen.get(fingerprint)
+      if (sourceSeq === undefined) {
+        sourceSeq = (ingestSeq.get(sessionId) ?? 0) + 1
+        ingestSeq.set(sessionId, sourceSeq)
+        seen.set(fingerprint, sourceSeq)
+        if (seen.size > 200) {
+          const oldest = seen.keys().next()
+          if (!oldest.done) seen.delete(oldest.value)
+        }
+      }
+      void (async () => {
+        try {
+          const brain = await getBrain()
+          if (!brain.ledger || typeof brain.ledger.ingestEvent !== 'function') return
+          await brain.ledger.ingestEvent({
+            source_event_id: `${sessionId}:${turn ?? 'na'}:${type}:${fingerprint}`,
+            session_id: sessionId,
+            // 单调递增的会话内序号；重发复用同一个值（见上面 ingestSeq 的注释）。
+            source_seq: sourceSeq,
+            event_type: type,
+            origin_system: type === 'user/message' ? 'human' : 'assistant',
+            occurred_at: new Date().toISOString(),
+            payload_text: body,
+          }, {
+            // openBrain 的 bindings 只有 scope_id/person_id，source_system 在这里补齐。
+            // 不补的话 assertBindings 会抛「已认证连接器绑定不完整」。
+            bindings: { source_system: 'dsh', scope_id: scopeId, person_id: personId },
+          })
+          ingestFailures = 0
+        } catch (error) {
+          ingestFailures += 1
+          if (ingestFailures <= 3) {
+            console.error('[brain-tools] 事件留痕失败（已忽略）:', error instanceof Error ? error.message : String(error))
+          }
+        }
+      })()
+    } catch {
+      /* 静默：留痕坏了不能影响对话 */
+    }
+  }
+
+  /**
+   * 从主人的原话里推「当前在做什么」→ 设/清任务焦点。
+   *
+   * 只在**明确的意图句**上动手（「我要做 X」「帮我搞 X」「做完了」），
+   * 拿不准就什么都不做——焦点设错了比没设更麻烦：它会让我少看东西，
+   * 而我看不出来自己少看了什么。
+   */
+  const applyTaskFocusFromEvent = (session, event) => {
+    try {
+      if (event?.type !== 'user/message') return
+      const data = event?.data !== undefined && event.data !== null && typeof event.data === 'object' ? event.data : {}
+      const sourceKind = data.source && typeof data.source === 'object' ? data.source.kind : undefined
+      if (sourceKind !== 'user') return
+      const text = assistantTextOf(data)
+      if (text.length === 0) return
+      const inferred = inferTaskFocus(text)
+      if (inferred === null) return
+      void (async () => {
+        try {
+          await getBrain()
+          if (inferred.clear) await clearTaskFocus()
+          else await setTaskFocus(inferred.label)
+        } catch {
+          /* 设焦点失败不影响对话 */
+        }
+      })()
     } catch {
       /* 静默 */
     }
@@ -359,9 +854,12 @@ export function apply(ctx, config) {
       ctx.on('session/event', (session, event) => {
         usedLaterTracker.handleSessionEvent(session, event)
         autoExtractOnEvent(session, event)
+        if (eventIngestEnabled) ingestSessionEvent(session, event)
+        applyTaskFocusFromEvent(session, event)
       })
       console.error(
-        `[brain-tools] usedLater 观测 + 自动提取已挂载（提取${autoExtractEnabled ? '开' : '关'}）`,
+        `[brain-tools] usedLater 观测 + 自动提取${eventIngestEnabled ? ' + 事件留痕' : ''}已挂载`
+        + `（提取${autoExtractEnabled ? '开' : '关'}）`,
       )
     } else {
       console.error('[brain-tools] 没有 ctx.on，usedLater 观测与自动提取未挂载（工具不受影响）')
@@ -370,14 +868,687 @@ export function apply(ctx, config) {
     console.error('[brain-tools] 观测钩子挂载失败（已忽略）:', error instanceof Error ? error.message : String(error))
   }
 
+  // ── 删除闭环：低频消费 pending deletion job（2026-10-30 深夜）────────
+  // 审计发现：`brain_forget` 只排队不消费——**全仓没有任何地方调
+  // `deletionWorker.runOnce()`**（只有 restore 恢复流程用过），于是删掉的记忆
+  // 一直留在 FTS 索引里能搜到，删除承诺等于没兑现。这是 M3 的删除链缺了驱动器，
+  // 不是 worker 本身有问题（worker 按 kind 分发、每步重查屏障，都实现了）。
+  //
+  // 这里挂低频 drain：启动 15 秒后跑一次，之后每 5 分钟一次。失败静默——清理坏了
+  // 不能影响对话；可用 `config.deletionDrain === false` 关掉。
+  // 定时器一律 `unref()`：不让一个观测任务拖住宿主进程退出。
+  const deletionDrainEnabled = !(config && config.deletionDrain === false)
+  const drainDeletions = async () => {
+    try {
+      const brain = await getBrain()
+      if (!brain.deletionWorker || typeof brain.deletionWorker.runOnce !== 'function') return
+      const result = await brain.deletionWorker.runOnce({ maxJobs: 200 })
+      const processed = result && Number.isFinite(Number(result.processed)) ? Number(result.processed) : null
+      const failed = result && Number.isFinite(Number(result.failed)) ? Number(result.failed) : null
+      // 只在真的处理过东西时才打日志：每 5 分钟刷一行「0」是噪音。
+      if (processed !== null && processed > 0) {
+        console.error(`[brain-tools] 删除队列已清理：processed=${processed} failed=${failed}`)
+      }
+    } catch (error) {
+      console.error('[brain-tools] 删除队列清理失败（已忽略）:', error instanceof Error ? error.message : String(error))
+    }
+  }
+  if (deletionDrainEnabled && typeof ctx.effect === 'function') {
+    try {
+      ctx.effect(() => {
+        const kick = setTimeout(() => { void drainDeletions() }, 15 * 1000)
+        const interval = setInterval(() => { void drainDeletions() }, 5 * 60 * 1000)
+        if (typeof kick.unref === 'function') kick.unref()
+        if (typeof interval.unref === 'function') interval.unref()
+        return () => {
+          clearTimeout(kick)
+          clearInterval(interval)
+        }
+      })
+      console.error('[brain-tools] 删除队列清理已挂载（启动 15s 后一次，之后每 5 分钟）')
+    } catch (error) {
+      console.error('[brain-tools] 删除队列清理挂载失败（已忽略）:', error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  // ── 主动社交驱动器（2026-10-31 凌晨）────────────────────────
+  // 页面「主动社交候选」一直是空的，根因之一：**没有任何东西调 `social.generate()`**。
+  // 开关开了也没人生成候选——M8 那几套系统缺驱动器（审计 A 项已点名：
+  // packages 里除 write-queue 超时外没有任何定时器）。
+  //
+  // 这里挂低频生成器：启动 30 秒后跑一次，之后每 30 分钟一次。
+  // 每轮先刷新「会话信号索引」（扫真实会话，约 10 秒），再生成候选——
+  // 索引是 care / commitment 两类在记忆库里查不到时的唯一真实来源。
+  // 生成只落候选表；真发要人点「批准并发送」，走 outboundChannel（dsh-im → QQ 单聊）。
+  // 闸门由门面自己判（`generate` 内部 readGate：暂停/社交关 → 只返回 preview 不写库），
+  // 失败静默——生成坏了不能影响对话。
+  const socialDriveEnabled = !(config && config.socialDrive === false)
+  const socialDriveIntervalMs = Number(config && config.socialDriveIntervalMs) > 0
+    ? Number(config.socialDriveIntervalMs)
+    : 30 * 60 * 1000
+  const driveSocial = async () => {
+    try {
+      // 先刷新会话信号索引。用绝对路径动态 import：brain-tools 只 junction 了 memory 包，
+      // 直接写包名 '@dsh-brain/persona' 在这里解析不到；这是项目内固定路径，不用相对路径绕。
+      try {
+        const indexMod = await import('file:///E:/ds-h/dsh-brain/packages/persona/src/session-signal-index.js')
+        if (indexMod && typeof indexMod.refreshSignalIndex === 'function') {
+          const refreshed = await indexMod.refreshSignalIndex({ cachePath: sessionSignalCachePath })
+          if (!refreshed.ok) {
+            console.error('[brain-tools] 会话信号索引刷新失败（沿用旧缓存）:', refreshed.error)
+          } else {
+            // 强制下次门面读取时重新读文件，而不是 5 分钟缓存
+            sessionSignalCache = null
+          }
+        }
+      } catch (error) {
+        console.error('[brain-tools] 会话信号索引不可用（已忽略）:', error instanceof Error ? error.message : String(error))
+      }
+      const brain = await getBrain()
+      if (!brain.persona || !brain.persona.social || typeof brain.persona.social.generate !== 'function') return
+      const result = await brain.persona.social.generate({ personId, persist: true })
+      const inserted = result && Number.isFinite(Number(result.persisted)) ? Number(result.persisted) : 0
+      // 只在真的插了新候选时打日志：每 30 分钟刷一行「0」是噪音。
+      if (inserted > 0) {
+        console.error(`[brain-tools] 主动社交生成 ${inserted} 条候选（等审批，不自动发送）`)
+      }
+    } catch (error) {
+      console.error('[brain-tools] 主动社交生成失败（已忽略）:', error instanceof Error ? error.message : String(error))
+    }
+  }
+  if (socialDriveEnabled && typeof ctx.effect === 'function') {
+    try {
+      ctx.effect(() => {
+        const kick = setTimeout(() => { void driveSocial() }, 30 * 1000)
+        const interval = setInterval(() => { void driveSocial() }, socialDriveIntervalMs)
+        if (typeof kick.unref === 'function') kick.unref()
+        if (typeof interval.unref === 'function') interval.unref()
+        return () => {
+          clearTimeout(kick)
+          clearInterval(interval)
+        }
+      })
+      console.error('[brain-tools] 主动社交驱动器已挂载（启动 30s 后一次，之后每 30 分钟；只生成候选不发送）')
+    } catch (error) {
+      console.error('[brain-tools] 主动社交驱动器挂载失败（已忽略）:', error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  // ── 自主指令驱动器（2026-10-31）────────────────────────────
+  // 页面「运行记录 / 步进流水」一直是 0，根因不是执行器坏了，是**没人调 `scheduler.runOnce`**
+  // ——directives 包刻意不起定时器（"由宿主决定"），而宿主这边一直没人起。
+  // 实测过：手动 runOnce 能完整跑完（completed / 4 步流水），接线缺的只是这一个循环。
+  //
+  // 这里挂低频 poller：启动 20 秒后一次，之后每 60 秒一次。
+  // 每轮先问闸门 `readGate()`，不 ok 就连认领都不做（省一次写事务）；
+  // 暂停 / 自主关 / 等级不够时门面自己会返回 skipped，这里不会因为"没活干"打日志。
+  // 兼容：没有 effect 能力就只是不挂定时器，工具与页面照常，不影响对话。
+  const directiveDriveEnabled = !(config && config.directiveDrive === false)
+    && String(process.env.BRAIN_DIRECTIVE_DRIVE || '').toLowerCase() !== 'off'
+  const directiveDriveIntervalMs = Number(config && config.directiveDriveIntervalMs) > 0
+    ? Number(config.directiveDriveIntervalMs)
+    : 60 * 1000
+  const driveDirectives = async () => {
+    try {
+      const brain = await getBrain()
+      const dir = brain.directives
+      if (!dir || !dir.scheduler || typeof dir.scheduler.runOnce !== 'function') return
+      // 先问闸门：关着的时候连认领都不该发生。
+      const gate = dir.readGate()
+      if (!gate || gate.ok !== true) return
+      const run = await dir.scheduler.runOnce({ owner: 'brain-tools-poller', maxSteps: 5 })
+      // 只在真的动过一条指令时才打日志：每分钟一行「skipped」是噪音。
+      if (run && run.skipped !== true && run.directiveId) {
+        console.error(
+          `[brain-tools] 自主指令跑了一轮：directive=${run.directiveId} `
+          + `runStatus=${run.runStatus} stopReason=${run.stopReason ?? '-'} 步骤=${Array.isArray(run.executed) ? run.executed.length : 0}`,
+        )
+      }
+    } catch (error) {
+      console.error('[brain-tools] 自主指令驱动失败（已忽略）:', error instanceof Error ? error.message : String(error))
+    }
+  }
+  if (directiveDriveEnabled && typeof ctx.effect === 'function') {
+    try {
+      ctx.effect(() => {
+        const kick = setTimeout(() => { void driveDirectives() }, 20 * 1000)
+        const interval = setInterval(() => { void driveDirectives() }, directiveDriveIntervalMs)
+        if (typeof kick.unref === 'function') kick.unref()
+        if (typeof interval.unref === 'function') interval.unref()
+        return () => {
+          clearTimeout(kick)
+          clearInterval(interval)
+        }
+      })
+      console.error('[brain-tools] 自主指令驱动器已挂载（启动 20s 后一次，之后每 60 秒；闸门关着就空转）')
+    } catch (error) {
+      console.error('[brain-tools] 自主指令驱动器挂载失败（已忽略）:', error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  // ── 类脑驱动器（2026-10-31）──────────────────────────────
+  // 类脑五个模块此前一个驱动器都没有（页面五格统计恒为 0）：不是坏了，是没人调
+  // `brainstem.checkOnce` / `reflect.runOnce`——搜遍 apps/ 只有页面读和页面按钮，
+  // 没有一处产生数据。
+  //
+  // 这里先挂两个**风险最小**的循环：
+  //   · 告警体检：只读主账指标 + 写 health_alerts，不碰记忆；恢复的自动 resolved。
+  //   · 空闲反思：受 reflection.enabled / paused 双闸门约束；只产出候选（reflections），
+  //     绝不自动改记忆——晋升必须人批（promote 只从控制台按钮进）。
+  //
+  // 显著性 / 技能 / 免疫**刻意不在这里接**：它们需要先定埋点位置与判据
+  // （记忆写入路径 / 工具调用成败 / 内容入口），没定规则就埋点只会造噪声。
+  const cognitionDriveEnabled = !(config && config.cognitionDrive === false)
+    && String(process.env.BRAIN_COGNITION_DRIVE || '').toLowerCase() !== 'off'
+  const brainstemSweepIntervalMs = Number(config && config.brainstemSweepIntervalMs) > 0
+    ? Number(config.brainstemSweepIntervalMs)
+    : 30 * 60 * 1000
+  const reflectionIntervalMs = Number(config && config.reflectionIntervalMs) > 0
+    ? Number(config.reflectionIntervalMs)
+    : 6 * 60 * 60 * 1000
+  const sweepHealth = async () => {
+    try {
+      const brain = await getBrain()
+      const stem = brain.cognition && brain.cognition.brainstem
+      if (!stem || typeof stem.checkOnce !== 'function') return
+      const out = await stem.checkOnce({ scopeId })
+      const raised = out && Number.isFinite(Number(out.raised)) ? Number(out.raised) : 0
+      const recovered = out && Number.isFinite(Number(out.resolved)) ? Number(out.resolved) : 0
+      // 只在真的有变化时打日志：半小时一行「0」是噪音。
+      if (raised > 0 || recovered > 0) {
+        console.error(`[brain-tools] 体检：新告警 ${raised} 条，自动恢复 ${recovered} 条`)
+      }
+    } catch (error) {
+      console.error('[brain-tools] 体检失败（已忽略）:', error instanceof Error ? error.message : String(error))
+    }
+  }
+  const runReflection = async () => {
+    try {
+      const brain = await getBrain()
+      const reflect = brain.cognition && brain.cognition.reflect
+      if (!reflect || typeof reflect.runOnce !== 'function') return
+      // 窗口给 7 天而不是默认 24 小时：实测最近 24h 只有十几条记忆、事件 0，
+      // 窗口太窄等于"没什么可反思的"。7 天是折中，再宽就该换触发策略了。
+      const windowFrom = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString()
+      const out = await reflect.runOnce({ trigger: 'scheduled', windowFrom })
+      // 闸门关着时 runOnce 返回 {skipped:true}，那是正常状态，不吭声。
+      if (!out || out.skipped === true) return
+      const produced = Number.isFinite(Number(out.produced)) ? Number(out.produced) : 0
+      if (produced > 0) {
+        console.error(`[brain-tools] 反思：产生候选 ${produced} 条（等人批，不自动进记忆）`)
+      }
+    } catch (error) {
+      console.error('[brain-tools] 反思失败（已忽略）:', error instanceof Error ? error.message : String(error))
+    }
+  }
+  if (cognitionDriveEnabled && typeof ctx.effect === 'function') {
+    try {
+      ctx.effect(() => {
+        // 体检先跑（45 秒后）——它只读，早点知道现况；反思 3 分钟后再动，避开启动高峰。
+        const sweepKick = setTimeout(() => { void sweepHealth() }, 45 * 1000)
+        const sweepTimer = setInterval(() => { void sweepHealth() }, brainstemSweepIntervalMs)
+        const reflectKick = setTimeout(() => { void runReflection() }, 3 * 60 * 1000)
+        const reflectTimer = setInterval(() => { void runReflection() }, reflectionIntervalMs)
+        for (const timer of [sweepKick, sweepTimer, reflectKick, reflectTimer]) {
+          if (typeof timer.unref === 'function') timer.unref()
+        }
+        return () => {
+          clearTimeout(sweepKick)
+          clearInterval(sweepTimer)
+          clearTimeout(reflectKick)
+          clearInterval(reflectTimer)
+        }
+      })
+      console.error('[brain-tools] 类脑驱动器已挂载（体检 30 分钟 / 反思 6 小时；只出告警与候选，不自动改记忆）')
+    } catch (error) {
+      console.error('[brain-tools] 类脑驱动器挂载失败（已忽略）:', error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  // ── 技能埋点：每一次工具调用都记一笔（2026-10-31，决策③B）──────────
+  // dsh-tools 的 `tools/result` 是**只观测**的终态事件（不能替换结果、不能拒绝调用），
+  // 正好拿来记成败：`(exec, result)`，`exec.name` 是工具名，`result.isError` 是成败。
+  // **不记参数、不记返回内容**——技能统计只回答「哪些活我老搞砸」，不需要原文。
+  const skillTrackingEnabled = !(config && config.skillTracking === false)
+    && String(process.env.BRAIN_SKILL_TRACKING || '').toLowerCase() !== 'off'
+  /** 连续写失败时只报前 3 次：埋点坏了不能变成日志洪水。 */
+  let skillTrackFailures = 0
+  const recordToolSkill = async (exec, result) => {
+    try {
+      const toolName = exec && typeof exec.name === 'string' ? exec.name : ''
+      if (!toolName) return
+      const brain = await getBrain()
+      const skill = brain.cognition && brain.cognition.skill
+      if (!skill || typeof skill.recordResult !== 'function') return
+      const failed = result && result.isError === true
+      const errorInfo = failed && result.error && typeof result.error === 'object' ? result.error : null
+      const errorCode = errorInfo && typeof errorInfo.code === 'string' ? errorInfo.code : null
+      // durationMs 传 null：tools/result 事件里没有耗时字段，编一个假数字比留空更糟。
+      await skill.recordResult({ tool: toolName, action: null, ok: !failed, errorCode, durationMs: null, scopeId })
+      skillTrackFailures = 0
+    } catch (error) {
+      skillTrackFailures += 1
+      if (skillTrackFailures <= 3) {
+        console.error('[brain-tools] 技能埋点失败（已忽略）:', error instanceof Error ? error.message : String(error))
+      }
+    }
+  }
+  if (skillTrackingEnabled && typeof ctx.on === 'function') {
+    try {
+      ctx.on('tools/result', (exec, result) => { void recordToolSkill(exec, result) })
+      console.error('[brain-tools] 技能埋点已挂载（观测 tools/result，只记工具名与成败，不记参数与内容）')
+    } catch (error) {
+      console.error('[brain-tools] 技能埋点挂载失败（已忽略）:', error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  // ── 关系挖掘：把「共享多个实体」的记忆连起来（2026-10-31，决策⑤A）──
+  // `memory_edges` 一直是 0 行，而反思的「矛盾」候选和心海的关系连线全长在它上面。
+  // 纯规则版本：两条记忆共享 ≥2 个实体 → 建一条 `supports` 边（同一主题的不同侧面）。
+  // **不做 contradicts**：那是语义判断，规则做不准；乱建一条假矛盾，比不建更糟
+  // （反思会把它当成「主人说过互相打架的话」报上去）。
+  const edgeMineEnabled = !(config && config.edgeMine === false)
+    && String(process.env.BRAIN_EDGE_MINE || '').toLowerCase() !== 'off'
+  const edgeMineIntervalMs = Number(config && config.edgeMineIntervalMs) > 0
+    ? Number(config.edgeMineIntervalMs)
+    : 6 * 60 * 60 * 1000
+  const mineMemoryEdges = async () => {
+    try {
+      const brain = await getBrain()
+      const edges = brain.memoryEdges
+      if (!edges || typeof edges.link !== 'function') return
+      const pairs = brain.db.prepare(`
+        SELECT a.memory_id AS aId, b.memory_id AS bId, COUNT(*) AS shared
+          FROM memory_entities a
+          JOIN memory_entities b
+            ON b.entity_id = a.entity_id AND b.memory_id > a.memory_id
+          JOIN memories ma ON ma.id = a.memory_id AND ma.status = 'active' AND ma.scope_id = ?
+          JOIN memories mb ON mb.id = b.memory_id AND mb.status = 'active' AND mb.scope_id = ?
+         GROUP BY a.memory_id, b.memory_id
+        HAVING COUNT(*) >= 2
+         ORDER BY shared DESC
+         LIMIT 60
+      `).all(scopeId, scopeId)
+      let created = 0
+      for (const pair of pairs) {
+        try {
+          await edges.link({
+            fromMemoryId: String(pair.aId),
+            toMemoryId: String(pair.bId),
+            kind: 'supports',
+            reason: `共享 ${pair.shared} 个实体（自动挖掘）`,
+            sourceSystem: 'brain-tools:edge-mine',
+            scopeId,
+          })
+          created += 1
+        } catch {
+          // 唯一索引 (from,to,kind) 撞了 = 这条边已经建过，正常跳过。
+        }
+      }
+      if (created > 0) console.error(`[brain-tools] 关系挖掘：新连 ${created} 对（共享实体）`)
+    } catch (error) {
+      console.error('[brain-tools] 关系挖掘失败（已忽略）:', error instanceof Error ? error.message : String(error))
+    }
+  }
+  if (edgeMineEnabled && typeof ctx.effect === 'function') {
+    try {
+      ctx.effect(() => {
+        const kick = setTimeout(() => { void mineMemoryEdges() }, 90 * 1000)
+        const interval = setInterval(() => { void mineMemoryEdges() }, edgeMineIntervalMs)
+        if (typeof kick.unref === 'function') kick.unref()
+        if (typeof interval.unref === 'function') interval.unref()
+        return () => {
+          clearTimeout(kick)
+          clearInterval(interval)
+        }
+      })
+      console.error('[brain-tools] 关系挖掘已挂载（启动 90s 后一次，之后每 6 小时；只建 supports 边，不碰 contradicts）')
+    } catch (error) {
+      console.error('[brain-tools] 关系挖掘挂载失败（已忽略）:', error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  // ── 学习层：从相处里学出人格微调（2026-10-31）──────────────────
+  // 三个决策（主人拍板）：
+  //   ①C 素材 = 主人明确说过的偏好（`type='profile'` 且 `source_type='owner_words'`）
+  //   ②B 生效 = 自动激活新版本，但每版都有 parent_version + diff，随时可回滚
+  //   ③C 字段 = 任何字段都能改，但 **locked 层永远不碰**——只写 learned 层；
+  //      跟 locked 打架时由 `persona_conflicts` 记下来等人裁决，不静默覆盖。
+  //
+  // 为什么素材只认 `owner_words`：`observation` 是我读文档得的结论，
+  // 拿它去改「我说话的方式」等于自己给自己定规矩，那不是学习，是自恋。
+  const LEARNED_FIELD_RULES = [
+    // 顺序即优先级：一条记忆只归一个字段，取第一条命中的。
+    { field: 'address', test: /(?:称呼|叫[我你]|别叫|喊[我你])/u },
+    { field: 'tone', test: /(?:语气|说话|啰嗦|简短|详细|直接|别绕|温柔|凶一点|别端着)/u },
+    { field: 'boundaries', test: /(?:不许|禁止|绝不|红线|底线|不能碰|别碰)/u },
+  ]
+  const learnedDriveEnabled = !(config && config.learnedDrive === false)
+    && String(process.env.BRAIN_LEARNED_DRIVE || '').toLowerCase() !== 'off'
+  const learnedDriveIntervalMs = Number(config && config.learnedDriveIntervalMs) > 0
+    ? Number(config.learnedDriveIntervalMs)
+    : 12 * 60 * 60 * 1000
+  const mineLearnedLayer = async () => {
+    try {
+      const brain = await getBrain()
+      const V = brain.persona && brain.persona.versions
+      if (!V || typeof V.createVersion !== 'function' || typeof V.activate !== 'function') return
+      const profileRow = brain.db
+        .prepare("SELECT id FROM persona_profiles WHERE scope_id = ? AND status = 'active' ORDER BY created_at LIMIT 1")
+        .get(scopeId)
+      if (profileRow === undefined) return
+      const profileId = String(profileRow.id)
+      // 以 **active 版本** 为基线：学习是「在当前生效的那版上叠加」，不是从第一版重算。
+      // 注意 `getActive` 收的是对象参数（`{ profileId }`），不是裸字符串。
+      const active = typeof V.getActive === 'function' ? V.getActive({ profileId }) : null
+      if (!active || !active.layers || typeof active.layers !== 'object') return
+      const currentLearned = active.layers.learned && typeof active.layers.learned === 'object'
+        ? active.layers.learned
+        : {}
+
+      // 素材：主人亲口说过的偏好。上限 60 条，按时间倒序——新的偏好优先。
+      const rows = brain.db.prepare(`
+        SELECT id, summary, content FROM memories
+         WHERE scope_id = ? AND status = 'active' AND type = 'profile'
+           AND source_type = 'owner_words' AND deletion_epoch = 0
+         ORDER BY created_at DESC LIMIT 60
+      `).all(scopeId)
+
+      /** @type {Record<string, string[]>} */
+      const nextLearned = {}
+      for (const [field, value] of Object.entries(currentLearned)) {
+        if (Array.isArray(value)) nextLearned[field] = value.map(String)
+      }
+      for (const m of rows) {
+        const text = String(m.summary || m.content || '').replace(/\s+/gu, ' ').trim().slice(0, 100)
+        if (text.length === 0) continue
+        const rule = LEARNED_FIELD_RULES.find((r) => r.test.test(text))
+        if (rule === undefined) continue
+        const bucket = Array.isArray(nextLearned[rule.field]) ? nextLearned[rule.field] : []
+        if (!bucket.includes(text)) bucket.push(text)
+        // 每字段最多留 5 条：学习层是「倾向摘要」，不是第二本记忆库。
+        nextLearned[rule.field] = bucket.slice(-5)
+      }
+
+      // 没变化就不建版本——版本号每 12 小时涨一次是噪音，不是学习。
+      if (JSON.stringify(nextLearned) === JSON.stringify(currentLearned)) return
+
+      // locked 层原样带上，一个字都不动（决策③C 的硬边界）。
+      const layers = { ...active.layers, learned: nextLearned }
+      const created = await V.createVersion({
+        profileId,
+        layers,
+        changeReason: 'learned:auto（从主人明确说过的偏好归纳）',
+        parentVersion: Number(active.version),
+        createdBy: 'brain-tools:learned',
+      })
+      // 先记冲突再激活，但**只记真冲突**：learned 里新增一个 locked 没有的字段
+      // 属于正常叠加，不算打架。实测把所有 diff 都交给 detectConflicts 会让
+      // 人格冲突页每学一次就多两条「待裁决」，那页会变成噪音墙。
+      const lockedLayer = active.layers.locked && typeof active.layers.locked === 'object' ? active.layers.locked : {}
+      const collides = Object.keys(nextLearned).filter(
+        (field) => lockedLayer[field] !== undefined && lockedLayer[field] !== null,
+      )
+      if (collides.length > 0) {
+        try {
+          if (typeof V.detectConflicts === 'function') {
+            await V.detectConflicts({
+              profileId,
+              fromVersion: Number(active.version),
+              toVersion: Number(created.version),
+              persist: true,
+            })
+          }
+        } catch (conflictError) {
+          // 冲突检测失败不拦激活：版本本身可回滚，而「学习动作整个不执行」更糟。
+          console.error('[brain-tools] 学习层冲突检测失败（已忽略）:', conflictError instanceof Error ? conflictError.message : String(conflictError))
+        }
+      }
+      // 决策②B：自动激活，回滚靠版本链（parent_version + diff）。
+      await V.activate(created.id, { by: 'brain-tools:learned', reason: 'learned:auto' })
+      console.error(
+        `[brain-tools] 学习层更新 → v${created.version}：`
+        + Object.entries(nextLearned).map(([k, v]) => `${k}(${Array.isArray(v) ? v.length : 0})`).join(' '),
+      )
+    } catch (error) {
+      console.error('[brain-tools] 学习层归纳失败（已忽略）:', error instanceof Error ? error.message : String(error))
+    }
+  }
+  if (learnedDriveEnabled && typeof ctx.effect === 'function') {
+    try {
+      ctx.effect(() => {
+        const kick = setTimeout(() => { void mineLearnedLayer() }, 5 * 60 * 1000)
+        const interval = setInterval(() => { void mineLearnedLayer() }, learnedDriveIntervalMs)
+        if (typeof kick.unref === 'function') kick.unref()
+        if (typeof interval.unref === 'function') interval.unref()
+        return () => {
+          clearTimeout(kick)
+          clearInterval(interval)
+        }
+      })
+      console.error('[brain-tools] 学习层已挂载（启动 5 分钟后一次，之后每 12 小时；只写 learned 层，locked 不动）')
+    } catch (error) {
+      console.error('[brain-tools] 学习层挂载失败（已忽略）:', error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  // ── 记忆生命周期：归档 → 墓碑 → 真删（2026-10-31，主人定 B+C 结合）──
+  // **B（归档）**：长期没人用、重要度又低的记忆改 `status='archived'`——
+  //   不再参与检索，但整条记录留着，随时能改回去。
+  // **C（真删）**：归档又过了缓冲期、且**一次都没被召回**的，才走墓碑 + 五步清理。
+  //   用的是 M3 那条真删除链路（墓碑 / 独立账本 / 正文 + 索引 / 导出 + 附件），
+  //   不是直接 DELETE 一行——删了就真没了，必须留账。
+  //
+  // 判据只用两个可解释的信号：`importance`（写入时自报）和 `recall_count`（检索命中次数）。
+  // **不按年龄一刀切**：一条三年前的偏好只要被召回过就不动它。
+  // 这两个判据以前是死的（recall_count 从来没被写过），所以先把 brain_search 里的
+  // 召回计数接上了——没有它，这里的所有阈值都是拍脑袋。
+  const lifecycleEnabled = !(config && config.lifecycle === false)
+    && String(process.env.BRAIN_LIFECYCLE || '').toLowerCase() !== 'off'
+  const lifecycleIntervalMs = Number(config && config.lifecycleIntervalMs) > 0
+    ? Number(config.lifecycleIntervalMs)
+    : 6 * 60 * 60 * 1000
+  /** 归档门槛：active 满这么久、重要度不高于这个、一次没被召回。 */
+  const archiveMinAgeDays = Number(config && config.archiveMinAgeDays) > 0
+    ? Number(config.archiveMinAgeDays)
+    : 90
+  const archiveMaxImportance = Number.isFinite(Number(config && config.archiveMaxImportance))
+    ? Number(config.archiveMaxImportance)
+    : 0.3
+  /** 真删门槛：归档满这么久、仍是一次没被召回。缓冲期就是给「改回来」留的机会。 */
+  const purgeAfterDays = Number(config && config.purgeAfterDays) > 0
+    ? Number(config.purgeAfterDays)
+    : 60
+  const runLifecycle = async () => {
+    try {
+      const brain = await getBrain()
+      if (!brain.queue || typeof brain.queue.write !== 'function') return
+      const nowMs = Date.now()
+      const stamp = brain.clock && typeof brain.clock.stamp === 'function'
+        ? brain.clock.stamp()
+        : { utc: new Date().toISOString(), local: new Date().toISOString() }
+
+      // 1) 归档：active → archived（不删，只是不再被检索到）
+      const archiveBefore = new Date(nowMs - archiveMinAgeDays * 86400000).toISOString()
+      const archived = await brain.queue.write(
+        (tx) => tx.run(
+          `UPDATE memories
+              SET status = 'archived', updated_at = ?, updated_at_local = ?
+            WHERE status = 'active' AND deletion_epoch = 0 AND scope_id = ?
+              AND importance <= ? AND recall_count = 0 AND created_at < ?`,
+          [stamp.utc, stamp.local, scopeId, archiveMaxImportance, archiveBefore],
+        ),
+        { label: 'lifecycle.archive' },
+      )
+      const archivedCount = archived && archived.changes != null ? Number(archived.changes) : 0
+
+      // 2) 真删：archived 且过了缓冲期、仍没被召回
+      const purgeBefore = new Date(nowMs - purgeAfterDays * 86400000).toISOString()
+      const victims = brain.db.prepare(
+        `SELECT id FROM memories
+          WHERE status = 'archived' AND deletion_epoch = 0 AND scope_id = ?
+            AND recall_count = 0 AND updated_at < ?
+          ORDER BY updated_at ASC LIMIT 20`,
+      ).all(scopeId, purgeBefore)
+      let purged = 0
+      for (const victim of victims) {
+        try {
+          await brain.deletion.requestDeletion({
+            target_kind: 'memory',
+            target_id: String(victim.id),
+            scope_id: scopeId,
+            reason: `生命周期：归档满 ${purgeAfterDays} 天且从未被召回`,
+            jobs: ['purge_text', 'scrub_index', 'drop_context_packages', 'purge_exports', 'purge_blobs'],
+          })
+          purged += 1
+        } catch (error) {
+          // 单条失败不中断整批：账本那边已经可能写了一半，报出来让人看。
+          console.error('[brain-tools] 生命周期：单条删除失败（跳过）:', error instanceof Error ? error.message : String(error))
+        }
+      }
+      if (archivedCount > 0 || purged > 0) {
+        console.error(`[brain-tools] 生命周期：归档 ${archivedCount} 条，进墓碑 ${purged} 条（每批最多 20）`)
+      }
+    } catch (error) {
+      console.error('[brain-tools] 生命周期执行失败（已忽略）:', error instanceof Error ? error.message : String(error))
+    }
+  }
+  if (lifecycleEnabled && typeof ctx.effect === 'function') {
+    try {
+      ctx.effect(() => {
+        const kick = setTimeout(() => { void runLifecycle() }, 10 * 60 * 1000)
+        const interval = setInterval(() => { void runLifecycle() }, lifecycleIntervalMs)
+        if (typeof kick.unref === 'function') kick.unref()
+        if (typeof interval.unref === 'function') interval.unref()
+        return () => {
+          clearTimeout(kick)
+          clearInterval(interval)
+        }
+      })
+      console.error(
+        `[brain-tools] 记忆生命周期已挂载（每 6 小时；active ≥${archiveMinAgeDays} 天且 importance ≤${archiveMaxImportance} 且零召回 → 归档；`
+        + `归档 ≥${purgeAfterDays} 天仍零召回 → 墓碑+清理）`,
+      )
+    } catch (error) {
+      console.error('[brain-tools] 记忆生命周期挂载失败（已忽略）:', error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  // ── 记忆提示注入：让模型「想得起来用它」（2026-10-30 深夜）──────────
+  // 审计结论：7 天只有 13 次检索，其中 11 次集中在「讨论外置大脑自己」的会话里。
+  // 原因不是模型懒，是**没有人告诉它这个东西存在**：灵枢每轮都把对话记忆注入上下文，
+  // 外置大脑一个字都不注入，于是它天然被遗忘——只有话题本身绕到它头上时才会被想起。
+  //
+  // 这里注入的是一段**静态提示**（不含检索结果、不含任何记忆正文），每轮一次
+  // （按 `session#turn` 去重）。它只做一件事：把「有这个能力」和「什么情况该用」
+  // 摆到模型面前。查不查仍然由模型自己决定——没有替它查，也没有替它答。
+  //
+  // 载体是 `assembly.contexts`（PromptContext → durable user-role snapshot，
+  // M0 实测这样做不会污染 system prompt）；`interpolate: false` **必填**，
+  // 否则文本里的 `{{...}}` 会被宿主当模板变量插值而抛错。
+  const hintInjectionEnabled = !(config && config.hintInjection === false)
+    && String(process.env.BRAIN_HINT_INJECT || '').toLowerCase() !== 'off'
+  /** 记忆条数缓存：每轮都查库不划算，5 分钟刷一次；查不到就不写数字（不编）。 */
+  let hintCountCache = /** @type {number|null} */ (null)
+  let hintCountAt = 0
+  /** `session#turn` → 已注入。有界，长会话不会把内存吃穿。 */
+  const hintSeen = new Set()
+
+  /**
+   * 拼提示文本。**永不抛**：拿不到条数也照常提示，只是不写数字。
+   * @returns {Promise<string>}
+   */
+  const buildHintText = async () => {
+    try {
+      if (hintCountCache === null || Date.now() - hintCountAt > 5 * 60 * 1000) {
+        const brain = await getBrain()
+        const row = brain.db
+          .prepare("SELECT count(*) AS c FROM memories WHERE status = 'active' AND scope_id = ?")
+          .get(scopeId)
+        const c = row && row.c != null ? Number(row.c) : null
+        if (Number.isFinite(c)) {
+          hintCountCache = c
+          hintCountAt = Date.now()
+        }
+      }
+    } catch {
+      /* 统计失败不影响提示本身 */
+    }
+    const countText = hintCountCache === null ? '' : `当前 ${hintCountCache} 条，`
+    // 当前任务焦点（决策②B：也影响注入——每轮把「现在在干什么」摆到模型面前）。
+    // 只写标签，不写任何记忆正文；焦点是主人自己说过的那句话。
+    const taskFocus = readTaskFocus()
+    return [
+      '[外置大脑 · 运行时提示]（这是记忆能力的用法说明，不是主人的发言）',
+      `你有跨会话长期记忆库（${countText}brain_search 查 / brain_remember 记 / brain_forget 忘）。`,
+      ...(taskFocus === null ? [] : [
+        `**当前焦点：${taskFocus.label}**（4 小时内有效）——检索会优先给你相关的，`
+        + '偏离焦点的会被降权但仍可看到（结果里会标条数）；真要跨主题找，给 brain_search 传 anyFocus: true。',
+      ]),
+      // 「算不算前史」是给人类看的标签，模型判不了——那是关于对话历史的判断。
+      // 模型能回答的是**关于自己的**问题：我现在的上下文里缺不缺这个信息？所以判据全写成自省式。
+      '**要不要查，不看「这句话算不算前史」，只看你缺不缺信息**：',
+      '· 这轮要用的具体东西（编号 / 尺寸 / 口径 / 决定 / 偏好 / 进度）在当前上下文里找不到，而那多半是以前定过的 → 先查',
+      '· 主人用了回溯或指代词（之前 / 上次 / 继续 / 那个 / 还按 / 老规矩 / 像上次 / 我们定过）→ 先查，别先猜',
+      '· 你要下「已经做过 / 改过 / 定过」的判断，而证据不在眼前 → 查',
+      '不必查：主人当场把信息说全了、问题能靠当前上下文或直接观察答出来、纯闲聊。',
+      '不确定就查一次：20~80ms，零命中也会如实回「没有」，比编一个答案便宜。',
+    ].join('\n')
+  }
+
+  try {
+    if (typeof ctx.on === 'function') {
+      ctx.on('system-prompt/assemble', async (assembly, context, next) => {
+        // waterfall 语义：先让下游把装配做完，我们只在它的结果上追加。
+        // 下游抛错必须原样透传（吞掉会改变宿主行为，例如 abort）。
+        const out = await next()
+        try {
+          if (!hintInjectionEnabled) return out
+          const agent = context && context.agent
+          const sessionId = agent && agent.session && typeof agent.session.id === 'string'
+            ? agent.session.id
+            : null
+          const phase = agent && agent.phase
+          const turn = phase && Number.isFinite(phase.turn) ? Number(phase.turn) : null
+          // 拿不到会话/回合就放弃注入：宁可少提示，也不要每步重复塞一遍。
+          if (sessionId === null || turn === null) return out
+          const key = `${sessionId}#${String(turn)}`
+          if (hintSeen.has(key)) return out
+          hintSeen.add(key)
+          if (hintSeen.size > 512) {
+            const oldest = hintSeen.values().next()
+            if (!oldest.done) hintSeen.delete(oldest.value)
+          }
+          const text = await buildHintText()
+          const contexts = Array.isArray(out && out.contexts) ? out.contexts : []
+          // 铁律：复制后追加，绝不 push 到宿主数组里。
+          return { ...out, contexts: [...contexts, { name: 'brain:hint', text, interpolate: false }] }
+        } catch {
+          // 我们自己的加工失败 → 返回宿主原本的装配结果，绝不把异常抛给宿主。
+          return out
+        }
+      })
+      console.error(
+        `[brain-tools] 记忆提示注入${hintInjectionEnabled ? '已' : '未'}挂载（turn 级、静态文本、不含记忆正文）`,
+      )
+    }
+  } catch (error) {
+    console.error('[brain-tools] 记忆提示注入挂载失败（已忽略）:', error instanceof Error ? error.message : String(error))
+  }
+
   // ── brain_search ───────────────────────────────────────────────
   tools.register(defineTool({
     name: 'brain_search',
     description:
-      '查外置大脑里的长期记忆。主人提到「之前说过的」「上次那个」「你还记得吗」、' +
-      '或者要复用早先定过的参数/决定/偏好时，用它。' +
-      '返回带来源、版本、有效期和证据强度的命中；命中不足时会如实说明是「没有」还是「证据不够」，' +
-      '这时不要硬答。不要拿它替代正常工作——只在真的需要跨会话记忆时查。',
+      '查外置大脑里的跨会话长期记忆：以前定过的参数、决定、口径、偏好、进度都能按关键词查到（带来源与有效期）。' +
+      '**该不该查，不看「这句话算不算前史」（这不归你判），只看三个你能自己回答的问题**：' +
+      '① 这轮要用的具体东西（编号 / 图号 / 尺寸 / 口径 / 决定 / 偏好 / 进度）在当前上下文里找不到吗？' +
+      '② 主人用了回溯或指代词（之前 / 上次 / 继续 / 那个 / 还按 / 老规矩 / 像上次 / 我们定过 / 你说过）吗？' +
+      '③ 你要下「已经做过 / 改过 / 定过」的判断，而证据不在眼前吗？' +
+      '任一条成立就先查，别凭印象答。' +
+      '**不用查**：主人当场把信息说全了、问题能靠当前上下文或直接观察答出来、纯闲聊。' +
+      '**不确定就查一次**：一次调用 20~80ms，零命中也会如实告诉你「没有」，比编一个答案便宜得多。' +
+      '命中不足时会说清是「没有」还是「证据不够」，这时如实说，别拿相似结果硬凑。',
     parameters: {
       query: {
         type: 'string',
@@ -397,6 +1568,12 @@ export function apply(ctx, config) {
           '可选，按实体收窄：人名 / 项目名 / 工具名 / 概念名（如「灵枢」「dsh-im」「Remotion」）。' +
           '只给 entity 不给 query 时，列出这个实体名下的全部记忆；' +
           '同时给 query 时，先在检索结果里筛出属于该实体的那些。查「关于 X 我们都定过什么」用它。',
+      },
+      anyFocus: {
+        type: 'boolean',
+        description:
+          '忽略当前任务焦点、按原始相关性排序。有焦点时检索会优先给「跟当前任务相关」的、'
+          + '把其余降权（不丢，只在后面并标条数）。要跨主题找东西时传 true。',
       },
     },
     output: {
@@ -471,6 +1648,49 @@ export function apply(ctx, config) {
           })
           hits = (result.hits || []).map(renderHit)
           diagnostics = explainDiagnostics(result.diagnostics)
+          // 召回计数（2026-10-31）：`recall_count` / `last_recalled_at` 这两个字段
+          // **以前从来没被写过**（全仓只有读），于是「哪条记忆真被用过」永远是 0，
+          // 淘汰策略因此没有可靠判据。命中即记，异步、失败静默——它不能影响检索本身。
+          if (hits.length > 0) {
+            const recalledIds = hits.map((h) => h.memoryId).filter((id) => typeof id === 'string' && id.length > 0)
+            if (recalledIds.length > 0) {
+              const stamp = new Date().toISOString()
+              void brain.queue.write(
+                (tx) => {
+                  for (const id of recalledIds) {
+                    tx.run(
+                      'UPDATE memories SET recall_count = recall_count + 1, last_recalled_at = ?, updated_at = ? WHERE id = ? AND deletion_epoch = 0',
+                      [stamp, stamp, id],
+                    )
+                  }
+                },
+                { label: 'brain.search.recall' },
+              ).catch(() => { /* 计数失败不影响检索 */ })
+            }
+          }
+        }
+
+        // ── 任务焦点：软过滤（②A 影响排序；③A 降权但仍然返回并标注）──
+        // 硬过滤（直接不返回）被否掉了：漏掉的东西不会自己告诉你。
+        let focusNote = null
+        const taskFocus = query ? readTaskFocus() : null
+        if (taskFocus !== null && hits.length > 1 && args.anyFocus !== true) {
+          const focusGrams = textBigrams(taskFocus.label)
+          if (focusGrams.size > 0) {
+            const scored = hits.map((hit) => {
+              const grams = textBigrams(`${hit.summary ?? ''} ${hit.content ?? ''}`)
+              let inter = 0
+              for (const gram of focusGrams) if (grams.has(gram)) inter += 1
+              return { hit, score: inter / focusGrams.size }
+            })
+            scored.sort((a, b) => b.score - a.score)
+            hits = scored.map((entry) => entry.hit)
+            const offCount = scored.filter((entry) => entry.score < 0.15).length
+            if (offCount > 0) {
+              focusNote = `当前焦点「${taskFocus.label}」：${scored.length - offCount} 条相关已排前，`
+                + `${offCount} 条因偏离焦点被降权（只是排序靠后，没丢；传 anyFocus: true 恢复原顺序）`
+            }
+          }
         }
 
         // ── 实体过滤 / 按实体列清单 ─────────────────────────────────
@@ -591,8 +1811,11 @@ export function apply(ctx, config) {
         }
         return {
           ok: true,
-          message: lines.join('\n'),
+          // 焦点说明放在最前面：它是「这次为什么是这个顺序」的解释，
+          // 埋在结果后面等于没写。
+          message: (focusNote ? focusNote + '\n\n' : '') + lines.join('\n'),
           hits,
+          ...(focusNote ? { focusNote } : {}),
           ...(entityItems.length > 0 ? { entityItems } : {}),
           diagnostics,
           ...(entityHit
@@ -659,16 +1882,38 @@ export function apply(ctx, config) {
           'observation = 我读文档/自己观察到的结论（置信度 0.8）。' +
           '**别把文档结论记成主人原话**——混了之后就没法区分「他说的」和「我看来的」。',
       },
+      salience: {
+        type: 'number',
+        description:
+          '这条记忆的显著性 0–1（可选；不填=不评估，不等于不重要）。' +
+          '它只在以后的检索里做微弱加成（上限 0.15），翻不了相关性那一盘。' +
+          '判据：**这条以后还会不会再被用到**？' +
+          '0.7 以上=主人明确强调过、或承诺/期限类、或会影响以后决策的；' +
+          '0.3 左右=有用的背景；' +
+          '随口一提、一次性信息就别给分。',
+      },
     },
     output: {
       schema: { type: 'json' },
       render: (_args, value) => [{ type: 'text', text: value.message }],
     },
-    async execute(args) {
+    async execute(args, exec) {
+      // 写入留痕（2026-10-30 深夜补）：之前 recordUsage 只挂在检索上，
+      // 「记了几次」只能靠 producer 字段倒推、「忘了几次」只能翻账本文件。
+      // 埋点走 finally，不靠每个 return 手动补——漏一条路径统计就有洞。
+      const startedAt = Date.now()
+      const sessionId = exec && exec.agent && exec.agent.session ? exec.agent.session.id : null
+      const kindForLog = typeof args.kind === 'string' ? args.kind : 'fact'
+      /** @type {{ ok: boolean, code: string|null, memoryId: string|null }} */
+      let usageOutcome = { ok: false, code: 'NO_OUTCOME', memoryId: null }
       try {
         const content = typeof args.content === 'string' ? args.content.trim() : ''
-        if (!content) return { ok: false, code: 'EMPTY_CONTENT', message: 'content 不能为空。' }
+        if (!content) {
+          usageOutcome = { ok: false, code: 'EMPTY_CONTENT', memoryId: null }
+          return { ok: false, code: 'EMPTY_CONTENT', message: 'content 不能为空。' }
+        }
         if (content.length > 500) {
+          usageOutcome = { ok: false, code: 'CONTENT_TOO_LONG', memoryId: null }
           return { ok: false, code: 'CONTENT_TOO_LONG', message: `内容 ${content.length} 字，超过 500 字上限。请压缩后再记。` }
         }
         const kindInput = typeof args.kind === 'string' ? args.kind : 'fact'
@@ -681,6 +1926,7 @@ export function apply(ctx, config) {
           episode: 'long', skill: 'long',
         }
         if (!(kindInput in typeMap)) {
+          usageOutcome = { ok: false, code: 'BAD_KIND', memoryId: null }
           return { ok: false, code: 'BAD_KIND', message: 'kind 只能是 fact / preference / decision / episode / skill。' }
         }
         const summary = typeof args.summary === 'string' && args.summary.trim()
@@ -726,14 +1972,74 @@ export function apply(ctx, config) {
           // 来源关联失败不改写结论——记忆本身已经写进去了
           console.error('[brain-tools] 来源关联失败:', linkError instanceof Error ? linkError.message : String(linkError))
         }
+
+        // ── 写入后的两件事（2026-10-31，决策④A / ②C）──
+        // ④A 免疫扫描：写入时扫一次，命中就落 `immune_quarantine`。
+        // **不改这条记忆本身**——隔离与检索策略分开，才能各自回滚（由检索侧调
+        // isQuarantined 决定要不要排除）。扫不了也不拦写入：免疫是加的一道闸，
+        // 不是写入的前置条件。
+        let quarantined = null
+        try {
+          const scan = await brain.cognition.immune.scan({
+            text: content,
+            sourceType: 'memory',
+            subjectTable: 'memories',
+            subjectId: created.id,
+            scopeId,
+          })
+          if (scan && scan.quarantined === true) quarantined = scan
+        } catch (scanError) {
+          console.error('[brain-tools] 免疫扫描失败（已忽略）:', scanError instanceof Error ? scanError.message : String(scanError))
+        }
+
+        // ②C 显著性：模型自报的分数落表。不填＝不评估（不是「不重要」，是「没量过」）。
+        // 分数只影响以后检索的微弱加成（上限 0.15），翻不了相关性那一盘。
+        let salienceMarked = null
+        const salienceArg = Number(args.salience)
+        if (Number.isFinite(salienceArg)) {
+          const score = Math.min(Math.max(salienceArg, 0), 1)
+          try {
+            await brain.cognition.salience.markMemory({
+              memoryId: created.id,
+              salience: score,
+              signals: ['model_judged'],
+              markedBy: 'brain_remember',
+              scopeId,
+            })
+            salienceMarked = score
+          } catch (salError) {
+            console.error('[brain-tools] 显著性标记失败（已忽略）:', salError instanceof Error ? salError.message : String(salError))
+          }
+        }
+
+        usageOutcome = { ok: true, code: null, memoryId: created.id }
+        const notes = []
+        if (salienceMarked !== null) notes.push(`显著性 ${salienceMarked}`)
+        if (quarantined !== null) notes.push(`⚠️ 免疫系统已标记隔离（${quarantined.reasonCode ?? 'unknown'}）`)
         return {
           ok: true,
-          message: `记住了 [${created.id}@v${created.version}]：${summary}`,
+          message: `记住了 [${created.id}@v${created.version}]：${summary}`
+            + (notes.length > 0 ? `（${notes.join('，')}）` : ''),
           memoryId: created.id,
           version: created.version,
         }
       } catch (error) {
-        return toolError(error, '写入')
+        const failure = toolError(error, '写入')
+        usageOutcome = { ok: false, code: failure.code, memoryId: null }
+        return failure
+      } finally {
+        recordUsage({
+          channel: 'write',
+          op: kindForLog,
+          query: null,
+          durationMs: Date.now() - startedAt,
+          sessionId,
+          ok: usageOutcome.ok,
+          code: usageOutcome.code,
+          hitCount: usageOutcome.ok ? 1 : 0,
+          hitIds: usageOutcome.memoryId ? [usageOutcome.memoryId] : [],
+          status: usageOutcome.ok ? 'ok' : 'error',
+        })
       }
     },
   }))
@@ -759,10 +2065,18 @@ export function apply(ctx, config) {
       schema: { type: 'json' },
       render: (_args, value) => [{ type: 'text', text: value.message }],
     },
-    async execute(args) {
+    async execute(args, exec) {
+      // 遗忘同样留痕（与写入、检索同一套口径）。
+      const startedAt = Date.now()
+      const sessionId = exec && exec.agent && exec.agent.session ? exec.agent.session.id : null
+      /** @type {{ ok: boolean, code: string|null, memoryId: string|null, affected: number|null }} */
+      let usageOutcome = { ok: false, code: 'NO_OUTCOME', memoryId: null, affected: null }
       try {
         const memoryId = typeof args.memoryId === 'string' ? args.memoryId.trim() : ''
-        if (!memoryId) return { ok: false, code: 'EMPTY_ID', message: 'memoryId 不能为空。' }
+        if (!memoryId) {
+          usageOutcome = { ok: false, code: 'EMPTY_ID', memoryId: null, affected: null }
+          return { ok: false, code: 'EMPTY_ID', message: 'memoryId 不能为空。' }
+        }
         const reason = typeof args.reason === 'string' && args.reason.trim()
           ? args.reason.trim().slice(0, 160)
           : '主人要求遗忘'
@@ -776,6 +2090,7 @@ export function apply(ctx, config) {
           reason,
           jobs: ['purge_text', 'scrub_index', 'drop_context_packages', 'purge_exports', 'purge_blobs'],
         })
+        usageOutcome = { ok: true, code: null, memoryId, affected: result && result.affected != null ? Number(result.affected) : null }
         return {
           ok: true,
           message:
@@ -789,7 +2104,22 @@ export function apply(ctx, config) {
           affected: result && result.affected,
         }
       } catch (error) {
-        return toolError(error, '遗忘')
+        const failure = toolError(error, '遗忘')
+        usageOutcome = { ok: false, code: failure.code, memoryId: null, affected: null }
+        return failure
+      } finally {
+        recordUsage({
+          channel: 'write',
+          op: 'forget',
+          query: null,
+          durationMs: Date.now() - startedAt,
+          sessionId,
+          ok: usageOutcome.ok,
+          code: usageOutcome.code,
+          hitCount: usageOutcome.ok ? 1 : 0,
+          hitIds: usageOutcome.memoryId ? [usageOutcome.memoryId] : [],
+          status: usageOutcome.ok ? 'ok' : 'error',
+        })
       }
     },
   }))
@@ -1167,7 +2497,7 @@ export function apply(ctx, config) {
               'X-Content-Type-Options': 'nosniff',
               'X-Frame-Options': 'SAMEORIGIN',
             })
-            res.end(renderConsolePage({ dbPath: storePath }))
+            res.end((await loadPageModule('console-page.js')).renderConsolePage({ dbPath: storePath }))
             return
           }
 
@@ -1325,7 +2655,7 @@ export function apply(ctx, config) {
               'X-Content-Type-Options': 'nosniff',
               'X-Frame-Options': 'SAMEORIGIN',
             })
-            res.end(renderSeaPage())
+            res.end((await loadPageModule('sea-page.js')).renderSeaPage())
             return
           }
 
@@ -1337,7 +2667,7 @@ export function apply(ctx, config) {
               'X-Content-Type-Options': 'nosniff',
               'X-Frame-Options': 'SAMEORIGIN',
             })
-            res.end(renderUsagePage({ logPath: usageLogPath, windowDays: usageWindowDays }))
+            res.end((await loadPageModule('usage-page.js')).renderUsagePage({ logPath: usageLogPath, windowDays: usageWindowDays }))
             return
           }
 
@@ -1350,7 +2680,7 @@ export function apply(ctx, config) {
               'X-Content-Type-Options': 'nosniff',
               'X-Frame-Options': 'SAMEORIGIN',
             })
-            res.end(renderConflictsPage({ scopeId }))
+            res.end((await loadPageModule('conflicts-page.js')).renderConflictsPage({ scopeId }))
             return
           }
 
@@ -1363,7 +2693,7 @@ export function apply(ctx, config) {
               'X-Content-Type-Options': 'nosniff',
               'X-Frame-Options': 'SAMEORIGIN',
             })
-            res.end(renderEntitiesPage({ scopeId }))
+            res.end((await loadPageModule('entities-page.js')).renderEntitiesPage({ scopeId }))
             return
           }
 
@@ -1678,7 +3008,7 @@ export function apply(ctx, config) {
               return
             }
             try {
-              const mod = await import('./governance-page.js')
+              const mod = await loadPageModule('governance-page.js')
               res.writeHead(200, {
                 'Content-Type': 'text/html; charset=utf-8',
                 'Cache-Control': 'no-store',
@@ -1714,26 +3044,41 @@ export function apply(ctx, config) {
             /** @type {{ total: number|null, items: any[] }} */
             let backups = { total: null, items: [] }
             try {
-              const rows = brain.backup && typeof brain.backup.listSnapshots === 'function'
-                ? brain.backup.listSnapshots({ limit: 10 })
-                : null
-              backups = rows === null
-                ? { total: null, items: [] }
-                : {
-                    total: rows.length,
-                    items: rows.map((/** @type {any} */ r) => ({
-                      id: r.backup_id ?? null,
-                      createdAt: r.created_at ?? null,
-                      sizeBytes: r.byte_size == null ? null : Number(r.byte_size),
-                      // status 是库里的真实字段；不认识的值原样给，页面按灰显示——
-                      // 别把「没校验过」美化成 ok。
-                      integrity: r.status == null ? 'unknown' : String(r.status),
-                      path: r.path ?? null,
-                      fileExists: r.file_exists === true,
-                      deletionEpoch: r.deletion_epoch == null ? null : Number(r.deletion_epoch),
-                    })),
+              // 备份列表直接读 M1 的 `backups` 表 —— 与治理服务（7420）的 listBackups 同源。
+              // 之前这里用 `brain.backup.listSnapshots`，它走的是另一套门面、返回空，
+              // 于是本页报「无备份」而 7420 明明列着一份已校验备份（审计 B2：两个视图互相打脸）。
+              const rows = /** @type {any[]} */ (brain.db.prepare(
+                `SELECT backup_id, path, byte_size, status, deletion_epoch, created_at, verified_at
+                   FROM backups ORDER BY created_at DESC LIMIT 10`,
+              ).all())
+              backups = {
+                total: rows.length,
+                items: rows.map((/** @type {any} */ r) => {
+                  const filePath = r.path == null ? null : String(r.path)
+                  let fileExists = false
+                  if (filePath !== null && filePath.length > 0) {
+                    try {
+                      fileExists = statSync(filePath).isFile()
+                    } catch {
+                      fileExists = false
+                    }
                   }
+                  return {
+                    id: r.backup_id ?? null,
+                    createdAt: r.created_at ?? null,
+                    sizeBytes: r.byte_size == null ? null : Number(r.byte_size),
+                    // status 是库里的真实字段；不认识的值原样给，页面按灰显示——
+                    // 别把「没校验过」美化成 ok。
+                    integrity: r.status == null ? 'unknown' : String(r.status),
+                    path: filePath,
+                    fileExists,
+                    verifiedAt: r.verified_at ?? null,
+                    deletionEpoch: r.deletion_epoch == null ? null : Number(r.deletion_epoch),
+                  }
+                }),
+              }
             } catch {
+              // 老库没有 backups 表时保持 null + 空，页面显示「–」，不编 0
               backups = { total: null, items: [] }
             }
             /** @type {{ total: number|null, items: any[] }} */
@@ -1805,7 +3150,7 @@ export function apply(ctx, config) {
           // ── 心情页（M7.2：情感状态并进主账之后的新页面）──────────
           if (pathname === '/mood') {
             try {
-              const mod = await import('./mood-page.js')
+              const mod = await loadPageModule('mood-page.js')
               res.writeHead(200, {
                 'Content-Type': 'text/html; charset=utf-8',
                 'Cache-Control': 'no-store',
@@ -1931,16 +3276,16 @@ export function apply(ctx, config) {
               /** @type {string} */
               let html = ''
               if (pathname === '/workspace') {
-                const mod = await import('./workspace-page.js')
+                const mod = await loadPageModule('workspace-page.js')
                 html = mod.renderWorkspacePage({ scopeId, view: mod.collectWorkspaceView(brain, { scopeId }) })
               } else if (pathname === '/cognition') {
-                const mod = await import('./cognition-page.js')
+                const mod = await loadPageModule('cognition-page.js')
                 html = mod.renderCognitionPage({ scopeId, view: mod.collectCognitionView(brain, { scopeId }) })
               } else if (pathname === '/persona') {
-                const mod = await import('./persona-page.js')
+                const mod = await loadPageModule('persona-page.js')
                 html = mod.renderPersonaPage({ scopeId, view: mod.collectPersonaView(brain, { scopeId }) })
               } else {
-                const mod = await import('./directives-page.js')
+                const mod = await loadPageModule('directives-page.js')
                 html = mod.renderDirectivesPage({ scopeId, view: mod.collectDirectivesView(brain, { scopeId }) })
               }
               res.writeHead(200, {
@@ -1969,7 +3314,7 @@ export function apply(ctx, config) {
             try {
               const brain = await getBrain()
               if (pathname === '/api/workspace') {
-                const mod = await import('./workspace-page.js')
+                const mod = await loadPageModule('workspace-page.js')
                 const view = mod.collectWorkspaceView(brain, { scopeId })
                 if (view.unavailable) {
                   sendJson(res, { ok: false, code: 'FACADE_UNAVAILABLE', message: view.unavailable }, 501)
@@ -1979,7 +3324,7 @@ export function apply(ctx, config) {
                 return
               }
               if (pathname === '/api/cognition') {
-                const mod = await import('./cognition-page.js')
+                const mod = await loadPageModule('cognition-page.js')
                 const view = mod.collectCognitionView(brain, { scopeId })
                 if (view.unavailable) {
                   sendJson(res, { ok: false, code: 'FACADE_UNAVAILABLE', message: view.unavailable }, 501)
@@ -1989,7 +3334,7 @@ export function apply(ctx, config) {
                 return
               }
               if (pathname === '/api/persona') {
-                const mod = await import('./persona-page.js')
+                const mod = await loadPageModule('persona-page.js')
                 const view = mod.collectPersonaView(brain, { scopeId })
                 if (view.unavailable) {
                   sendJson(res, { ok: false, code: 'FACADE_UNAVAILABLE', message: view.unavailable }, 501)
@@ -1998,7 +3343,7 @@ export function apply(ctx, config) {
                 sendJson(res, { ok: true, ...view })
                 return
               }
-              const mod = await import('./directives-page.js')
+              const mod = await loadPageModule('directives-page.js')
               const view = mod.collectDirectivesView(brain, { scopeId })
               if (view.unavailable) {
                 sendJson(res, { ok: false, code: 'FACADE_UNAVAILABLE', message: view.unavailable }, 501)
@@ -2181,6 +3526,313 @@ export function apply(ctx, config) {
               })
             } catch (error) {
               writeFailure(res, '演算主动社交', error)
+            }
+            return
+          }
+
+          // 批准并发送（2026-10-31 凌晨）：页面上「批准」要能真的走完整链路。
+          // 两步：scored → arbitrate（策略闸/预算/静默时段）→ awaiting_approval → send。
+          // 通道是本机 console（只落 data/logs/social-outbox.jsonl），不发往任何第三方。
+          // 默认 dry_run：真发必须显式传 mode:'approved'，防误点。
+          // 策略参数（2026-10-31）：dailyCap / cooldownMinutes / maxPending / quietHours / enabled。
+          // 这些是「数值/阈值」不是开关——闸门本身由 workspace 开关控，这里调的是闸门放多宽。
+          // 范围校验交给门面（clampInt / normalizeQuietHours 会抛 INVALID_ARGUMENT → 400）。
+          if (pathname === '/api/persona/policy') {
+            const body = await jsonAction(req, res)
+            if (!body) return
+            try {
+              const brain = await getBrain()
+              if (!brain.persona || !brain.persona.persons) {
+                sendJson(res, { ok: false, code: 'FACADE_UNAVAILABLE', message: '人格门面未接线，改不了策略' }, 501)
+                return
+              }
+              /** @type {Record<string, any>} */
+              const policyPatch = { personId }
+              // 越界**显式拒绝**，不让门面的 clampInt 静默夹取：
+              // 实测 dailyCap=999 会被悄悄改成 100，页面显示「已保存」但值不是用户填的——
+              // 那是"看起来成功，实际没照做"，比报错更糟。
+              const intField = (raw, label, min, max) => {
+                const value = Number(raw)
+                if (!Number.isFinite(value) || !Number.isInteger(value)) {
+                  throw Object.assign(new Error(`${label} 必须是整数（收到 ${String(raw)}）`), { code: 'INVALID_ARGUMENT' })
+                }
+                if (value < min || value > max) {
+                  throw Object.assign(new Error(`${label} 必须在 ${min}–${max} 之间（收到 ${value}）`), { code: 'INVALID_ARGUMENT' })
+                }
+                return value
+              }
+              if (body.dailyCap !== undefined) policyPatch.dailyCap = intField(body.dailyCap, '每日上限', 0, 100)
+              if (body.cooldownMinutes !== undefined) {
+                policyPatch.cooldownMinutes = intField(body.cooldownMinutes, '冷却分钟', 0, 10080)
+              }
+              if (body.maxPending !== undefined) policyPatch.maxPending = intField(body.maxPending, '待批准上限', 0, 100)
+              if (body.enabled !== undefined) {
+                policyPatch.enabled = body.enabled === true || body.enabled === 1 || body.enabled === '1'
+              }
+              if (body.quietHours !== undefined) {
+                // 接受数组，或页面表单里的字符串 "00:00-07:30, 12:00-13:00"（空串 = 不设免打扰）
+                if (Array.isArray(body.quietHours)) {
+                  policyPatch.quietHours = body.quietHours
+                } else {
+                  policyPatch.quietHours = String(body.quietHours)
+                    .split(',')
+                    .map((part) => part.trim())
+                    .filter(Boolean)
+                    .map((part) => {
+                      const [from, to] = part.split('-').map((value) => String(value || '').trim())
+                      return { from, to }
+                    })
+                }
+              }
+              const policy = await brain.persona.persons.updatePolicy(policyPatch)
+              sendJson(res, {
+                ok: true,
+                policy,
+                note: '已保存。策略版本 +1，之后每条候选仲裁都会记下用的是哪一版。',
+              })
+            } catch (error) {
+              writeFailure(res, '改策略', error)
+            }
+            return
+          }
+
+          // 通道配置（2026-10-31）：换成任意 dsh-im 目标，不再写死一个 QQ。
+          // GET 只读当前配置 + 能动的话一并列可用机器人/目标；POST 保存（同源保护）。
+          if (pathname === '/api/persona/channels') {
+            const currentChannel = loadChannelConfig()
+            // 同上：`ctx.dshIm` 会抛 without inject，只能显式 get。
+            const svc = typeof ctx.get === 'function' ? ctx.get('dshIm') : null
+            /** @type {{ bots: any[], targets: any[], note: string|null }} */
+            const extra = { bots: [], targets: [], note: null }
+            try {
+              if (svc && typeof svc.listBots === 'function') {
+                const bots = await svc.listBots()
+                extra.bots = Array.isArray(bots) ? bots : []
+                if (currentChannel.botId && typeof svc.listTargets === 'function') {
+                  const targets = await svc.listTargets(currentChannel.botId)
+                  extra.targets = Array.isArray(targets) ? targets : []
+                }
+              } else {
+                extra.note = '拿不到 dsh-im 服务（插件没注入 dshIm），只能手填 botId/targetId'
+              }
+            } catch (error) {
+              extra.note = '列通道失败：' + (error instanceof Error ? error.message : String(error))
+            }
+            sendJson(res, { ok: true, current: currentChannel, ...extra })
+            return
+          }
+
+          if (pathname === '/api/persona/channel') {
+            const body = await jsonAction(req, res)
+            if (!body) return
+            const nextBotId = typeof body.botId === 'string' ? body.botId.trim() : ''
+            const nextTargetId = typeof body.targetId === 'string' ? body.targetId.trim() : ''
+            if (!nextBotId || !nextTargetId) {
+              sendJson(res, {
+                ok: false,
+                code: 'INVALID_ARGUMENT',
+                message: 'botId 和 targetId 都必填（从「设置 → IM机器人 → 对应账号 → 投递设置」复制）',
+              }, 400)
+              return
+            }
+            try {
+              const next = {
+                botId: nextBotId,
+                targetId: nextTargetId,
+                channel: typeof body.channel === 'string' && body.channel.trim() ? body.channel.trim().slice(0, 20) : 'im',
+                label: typeof body.label === 'string' ? body.label.trim().slice(0, 60) : '',
+              }
+              saveChannelConfig(next)
+              sendJson(res, {
+                ok: true,
+                current: next,
+                note: '已保存，下一次「批准并发送」就走这个目标——不用重启（每次发送都现读配置）。',
+              })
+            } catch (error) {
+              writeFailure(res, '保存通道', error)
+            }
+            return
+          }
+
+          // 「主人覆盖」层：手写键值对，压过基础层（2026-10-31 补的入口）。
+          // 设计里 userOverride 是**唯一留给主人**的一层，但一直没入口，等于摆着看的。
+          // 文本格式：一行一条「键：值」；body.clear === true 表示清空这层。
+          if (pathname === '/api/persona/override') {
+            const body = await jsonAction(req, res)
+            if (!body) return
+            const text = typeof body.text === 'string' ? body.text : ''
+            const clear = body.clear === true
+            /** @type {Record<string, string>} */
+            const overrideLayer = {}
+            if (!clear) {
+              for (const rawLine of text.split(/\r?\n/u)) {
+                // 只认「键：值」，中英文冒号都行。解析不出来的行直接跳过（不猜）。
+                const match = rawLine.match(/^\s*([^：:]{1,40})[：:]\s*(.+?)\s*$/u)
+                if (match === null) continue
+                const key = match[1].trim()
+                const value = match[2].trim().slice(0, 400)
+                if (key.length > 0 && value.length > 0) overrideLayer[key] = value
+              }
+              if (Object.keys(overrideLayer).length === 0) {
+                sendJson(res, {
+                  ok: false,
+                  code: 'INVALID_ARGUMENT',
+                  message: '一条都没解析出来。要写成「键：值」，一行一条，比如：称呼：叫我老板',
+                }, 400)
+                return
+              }
+            }
+            try {
+              const brain = await getBrain()
+              const V = brain.persona && brain.persona.versions
+              if (!V || typeof V.createVersion !== 'function' || typeof V.activate !== 'function') {
+                sendJson(res, { ok: false, code: 'FACADE_UNAVAILABLE', message: '人格门面未接线，写不了覆盖' }, 501)
+                return
+              }
+              const profileRow = brain.db
+                .prepare("SELECT id FROM persona_profiles WHERE scope_id = ? AND status = 'active' ORDER BY created_at LIMIT 1")
+                .get(scopeId)
+              if (profileRow === undefined) {
+                sendJson(res, { ok: false, code: 'NO_PROFILE', message: '还没有人格档案，先导入一次 AGENTS.md' }, 409)
+                return
+              }
+              const profileId = String(profileRow.id)
+              const active = V.getActive({ profileId })
+              if (active === null) {
+                sendJson(res, { ok: false, code: 'NO_ACTIVE_VERSION', message: '没有 active 版本，写不了覆盖' }, 409)
+                return
+              }
+              const created = await V.createVersion({
+                profileId,
+                layers: { ...active.layers, userOverride: overrideLayer },
+                changeReason: clear ? 'userOverride:cleared（主人清空覆盖）' : 'userOverride:manual（主人手写覆盖）',
+                parentVersion: Number(active.version),
+                createdBy: 'owner',
+              })
+              await V.activate(created.id, { by: 'owner', reason: 'userOverride:manual' })
+              sendJson(res, {
+                ok: true,
+                version: created.version,
+                layer: overrideLayer,
+                note: clear
+                  ? '已清空主人覆盖，回到基础层（新版本 v' + created.version + '，可回滚）'
+                  : '已生效：v' + created.version + '（' + Object.keys(overrideLayer).length + ' 条覆盖，可回滚）',
+              })
+            } catch (error) {
+              writeFailure(res, '写入主人覆盖', error)
+            }
+            return
+          }
+
+          // 治理服务（默认 7420）的状态与启停（2026-10-31）。
+          // 它其实**跑在本进程内**（见 ensureGovernance），不是独立进程——
+          // 所以「停止」只能关掉这个监听句柄，「启动」是重新拉一次。
+          // 端口被别人占着时我们只是代理过去，那种情况**不能停**（不是我们的句柄）。
+          if (pathname === '/api/governance/status') {
+            const runtime = governanceRuntime
+            sendJson(res, {
+              ok: true,
+              running: runtime !== null,
+              port: runtime === null ? governancePort : runtime.port,
+              controllable: runtime !== null && typeof runtime.close === 'function',
+              disabled: governanceDisabled,
+            })
+            return
+          }
+          if (pathname === '/api/governance/start') {
+            const body = await jsonAction(req, res)
+            if (!body) return
+            if (governanceDisabled) {
+              sendJson(res, { ok: false, code: 'DISABLED', message: '治理服务被 config.governance=false 关掉了' }, 409)
+              return
+            }
+            try {
+              // 先置空再拉：ensureGovernance 里靠 null 判断「还没起」，不清就什么都不做。
+              if (governanceRuntime === null) await ensureGovernance()
+              sendJson(res, {
+                ok: true,
+                running: governanceRuntime !== null,
+                port: governanceRuntime === null ? governancePort : governanceRuntime.port,
+                note: '治理服务已启动（只有本机回环 + Bearer token，写操作仍要面板上确认）',
+              })
+            } catch (error) {
+              writeFailure(res, '启动治理服务', error)
+            }
+            return
+          }
+          if (pathname === '/api/governance/stop') {
+            const body = await jsonAction(req, res)
+            if (!body) return
+            const runtime = governanceRuntime
+            if (runtime === null) {
+              sendJson(res, { ok: true, running: false, note: '本来就没在跑' })
+              return
+            }
+            if (typeof runtime.close !== 'function') {
+              sendJson(res, {
+                ok: false,
+                code: 'NOT_OURS',
+                message: '这个端口是别的进程占着的，本插件只是把请求代理过去——停不了它，得去停那个进程',
+              }, 409)
+              return
+            }
+            governanceRuntime = null
+            try {
+              await runtime.close()
+            } catch (error) {
+              console.error('[brain-tools] 关闭治理服务出错（已忽略）:', error instanceof Error ? error.message : String(error))
+            }
+            sendJson(res, {
+              ok: true,
+              running: false,
+              note: '已停止。副作用：/dsh-brain/governance 会返回 503，直到你再次启动',
+            })
+            return
+          }
+
+          if (pathname === '/api/persona/social/send') {
+            const body = await jsonAction(req, res)
+            if (!body) return
+            const id = typeof body.id === 'string' ? body.id.trim() : ''
+            if (!id) {
+              sendJson(res, { ok: false, code: 'INVALID_ARGUMENT', message: 'id 必填（社交候选 id）' }, 400)
+              return
+            }
+            const mode = body.mode === 'approved' ? 'approved' : 'dry_run'
+            try {
+              const brain = await getBrain()
+              if (!brain.persona || !brain.persona.social) {
+                sendJson(res, { ok: false, code: 'FACADE_UNAVAILABLE', message: '人格门面未接线，发不了候选' }, 501)
+                return
+              }
+              const social = brain.persona.social
+              // 不传 channel：门面按模式给默认值 —— dry_run → 'console'，approved → 'im'。
+              // 为什么不能传 'qq'：`social_sends.channel` 有 CHECK(channel IN ('console','im','other'))，
+              // 传 'qq' 会让**发送成功后的记账**撞约束报 constraint failed，接口于是回「没发出去」，
+              // 而消息其实已经到了主人手机里（实测踩过）。渠道细分放 receipt_json，不进 channel。
+              let result = await social.send(id, { mode })
+              // 刚生成的候选是 `scored`，send 会回 invalid_status——先过仲裁再发一次。
+              // 仲裁不过（静默时段/预算/策略）就如实返回被拒原因，不绕过闸门。
+              if (mode === 'approved' && result && result.reason === 'invalid_status'
+                && typeof social.arbitrate === 'function') {
+                await social.arbitrate(id, { by: 'console' })
+                result = await social.send(id, { mode })
+              }
+              const sent = !!(result && result.ok === true && (mode === 'dry_run' || result.sent === true))
+              sendJson(res, {
+                ok: sent,
+                mode,
+                result,
+                note: mode === 'dry_run'
+                  ? '只做了试发记录（dry_run），没有真的发出去'
+                  : sent
+                    ? (result.recorded === false
+                      ? '消息已经发出去了，但发送记录没落库（' + String(result.recordError || '未知原因') + '）——这条要人工记一下'
+                      : '已通过 QQ 单聊发出（dsh-im 主动投递）')
+                    : '没发出去：' + String(result && result.reason ? result.reason : '未知原因'),
+              })
+            } catch (error) {
+              writeFailure(res, '发送社交候选', error)
             }
             return
           }

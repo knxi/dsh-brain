@@ -62,6 +62,10 @@ node -e "..."                           # 开关请走控制台页面，别手�
 | `social.allow_external` | `0` | 是否允许**真外发**（默认只进控制台） | 控制台 + 还要注入通道 |
 | `reflection.enabled` | `0` | 空闲反思是否允许跑 | 控制台 |
 
+> **现状更新（2026-10-30）**：上表是**默认值**（六个键默认五个关）；但生产库 **2026-10-30 22:16 曾被 console 手动打开到 5/6**
+> （`autonomy.enabled=1`、`autonomy.max_level=L3`、`social.enabled=1`、`social.allow_external=1`、`reflection.enabled=1`，`paused=0`）。
+> **开关当前状态以 `brain_switches` 表为准，不要拿本节默认值当现状。**
+
 **开关为 0 时，模块必须做到零副作用**（不写业务表、不发事件、不排队）。这条有测试钉住，不是口头承诺。
 
 ## 4. 每条防线的具体位置

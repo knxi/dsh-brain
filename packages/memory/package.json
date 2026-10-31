@@ -31,7 +31,10 @@
     "./memory-util": "./src/memory-util.js"
   },
   "dependencies": {
+    "@dsh-brain/cognition": "workspace:*",
     "@dsh-brain/core": "workspace:*",
+    "@dsh-brain/directives": "workspace:*",
+    "@dsh-brain/persona": "workspace:*",
     "@dsh-brain/search": "workspace:*",
     "@dsh-brain/workspace": "workspace:*"
   },

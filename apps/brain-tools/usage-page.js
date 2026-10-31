@@ -24,6 +24,10 @@ import { renderNav, NAV_CSS } from './nav.js'
 export function renderUsagePage({ logPath, windowDays }) {
   const escapedLogPath = String(logPath).replace(/&/g, '&amp;').replace(/</g, '&lt;')
   const days = Number(windowDays) > 0 ? Number(windowDays) : 7
+  // 天数窗口是**服务端**变量：接口地址在这里拼好，页面脚本只负责把字符串搬进去。
+  // 不写成「单引号里放 ${days}」——那虽然也能被外层模板串插值成数字，但读起来像坏掉的
+  // 模板串（审计就把它读成了 bug），靠隐式行为兜底不如显式拼一次。
+  const usageApi = '/dsh-brain/api/usage?days=' + days
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -278,7 +282,12 @@ ${NAV_CSS}
   function renderNever(cov){
     var box = DOC.getElementById('never-rows'); box.textContent = ''
     if (!cov){ return }
-    txt('cov-n', '　' + cov.neverHit + ' / ' + cov.totalMemories + ' 条，覆盖率 ' + pct(cov.touchedRate))
+    // 两个数口径不同，必须各自标注：neverHit 是「从没被查到过的条数」，touchedRate 是「覆盖率」。
+    // 并排写成「178 / 218 条，覆盖率 18.3%」会被读成 178/218=18.3%，而 178/218 实际是 81.6%
+    // ——两个正确的数放在一起互相打脸。总数为 0 时不给分母，显示 '–' 而不是 NaN。
+    var neverShare = (cov.neverHit != null && cov.totalMemories > 0)
+      ? (cov.neverHit / cov.totalMemories) : null
+    txt('cov-n', '　从没被查到过 ' + cov.neverHit + ' 条（占 ' + pct(neverShare) + '）· 覆盖率 ' + pct(cov.touchedRate))
     var list = cov.neverHitSamples || []
     if (list.length === 0){ box.appendChild(el('div','empty','全部记忆都被查到过，或还没有记忆。')); return }
     list.forEach(function(m){
@@ -312,7 +321,7 @@ ${NAV_CSS}
     txt('flow-n', '　最近 ' + recent.length + ' 条')
   }
 
-  fetch('/dsh-brain/api/usage?days=${days}', { credentials: 'same-origin' })
+  fetch('${usageApi}', { credentials: 'same-origin' })
     .then(function(r){ return r.json() })
     .then(function(d){
       if (!d || !d.ok){

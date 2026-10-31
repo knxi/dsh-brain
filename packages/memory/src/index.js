@@ -203,6 +203,8 @@ export function openBrain(options) {
     workspace,
     bindings: facadeBindings,
     channel: typeof options.outboundChannel === 'function' ? options.outboundChannel : null,
+    // 会话信号索引（care / commitment）读取器。门面先查记忆库，查不到才回落它。
+    signals: typeof options.signals === 'function' ? options.signals : null,
   });
 
   // M8 系统 5：自主指令。

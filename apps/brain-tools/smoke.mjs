@@ -13,7 +13,7 @@
  *
  *   node apps/brain-tools/smoke.mjs
  */
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -26,6 +26,11 @@ const registered = []
  * @type {Array<(session: any, event: any) => void>}
  */
 const sessionHandlers = []
+/**
+ * `system-prompt/assemble` waterfall（fake ctx 捕获，用来验「记忆提示注入」）。
+ * @type {Array<(assembly: any, context: any, next: any) => Promise<any>>}
+ */
+const assembleHandlers = []
 const fakeCtx = {
   tools: {
     register: (/** @type {any} */ tool) => registered.push(tool),
@@ -34,6 +39,7 @@ const fakeCtx = {
   // 否则这条路在冒烟里永远不会被跑到——那等于没验。
   on: (/** @type {string} */ eventName, /** @type {any} */ handler) => {
     if (eventName === 'session/event') sessionHandlers.push(handler)
+    else if (eventName === 'system-prompt/assemble') assembleHandlers.push(handler)
     return () => {}
   },
 }
@@ -66,9 +72,15 @@ try {
     personId: 'smoke-owner',
     usageLogPath,
     usedLaterLogPath,
+    // 自动提取的 sidecar 也必须落临时目录：2026-10-30 深夜起「判定过但没候选」
+    // 也会落一行 no_candidate（为了能区分「没跑到」和「跑了没东西」）。
+    // 不传这个路径，冒烟就会往生产 data/logs/auto-extract.jsonl 里掺合成记录。
+    autoExtractLogPath: join(dir, 'auto-extract.jsonl'),
     // 治理服务（7420）在插件里是进程内自动拉起的（2026-10-30）。
     // 冒烟必须关掉：否则它会拿临时库去 listen 7420，既慢又可能和真机抢端口。
     governance: false,
+    // 删除队列 drain 也关掉：冒烟不该在临时库上定时跑 worker（虽然无害，但会拖时间）。
+    deletionDrain: false,
   })
 
   check('挂载三个工具', registered.length === 3,
@@ -170,9 +182,16 @@ try {
   const usage = readUsageLog(usageLogPath)
   check('检索留下了使用记录', usage.entries.length > 0,
     `entries=${usage.entries.length} skipped=${usage.skipped} exists=${usage.exists}`)
-  check('记录都标了 channel=tool',
-    usage.entries.length > 0 && usage.entries.every((e) => e.channel === 'tool'),
+  const retrievalEntries = usage.entries.filter((e) => e.channel === 'tool')
+  check('检索记录都标了 channel=tool',
+    retrievalEntries.length > 0 && retrievalEntries.every((e) => e.channel === 'tool'),
     [...new Set(usage.entries.map((e) => e.channel))].join(',') || 'none')
+  // 写入与遗忘也要留痕（2026-10-30 补）：之前只埋了检索，「记了几次/忘了几次」
+  // 只能靠 producer 字段和账本文件倒推。write 通道必须带 op（remember 的 kind / forget）。
+  const writeEntries = usage.entries.filter((e) => e.channel === 'write')
+  check('写入/遗忘也留痕（channel=write + op）',
+    writeEntries.length > 0 && writeEntries.every((e) => typeof e.op === 'string' && e.op.length > 0),
+    writeEntries.map((e) => `${e.op}:${e.ok ? 'ok' : e.code}`).join(',') || 'none')
   const repeatQueries = usage.entries.filter((e) => e.query === '踢脚线报价')
   check('同一 query 两次都记下（遗忘前后）', repeatQueries.length === 2, `count=${repeatQueries.length}`)
   check('零命中查询如实记下',
@@ -186,9 +205,15 @@ try {
     typeof usageSummary.hitRate === 'number' &&
     usageSummary.failCount >= 1,
     `total=${usageSummary.total} ok=${usageSummary.okCount} fail=${usageSummary.failCount} hitRate=${usageSummary.hitRate} zero=${usageSummary.zeroHitCount} avg=${usageSummary.timing.avg}ms`)
+  // 只对检索类调用验「失败不计入零命中」：写入/遗忘的失败是另一回事，
+  // 它进 byChannel/failCount，但不该被算成「查了没命中」。
+  const retrievalFail = retrievalEntries.filter((e) => e.ok === false).length
+  const retrievalZero = retrievalEntries.filter(
+    (e) => e.ok !== false && (Number(e.hitCount) || 0) === 0,
+  ).length
   check('失败检索不算进零命中',
-    usageSummary.zeroHitCount === 2 && usageSummary.failCount === 1,
-    `zero=${usageSummary.zeroHitCount}（两次真零命中）fail=${usageSummary.failCount}（一次空 query）`)
+    retrievalZero === 2 && retrievalFail === 1,
+    `zero=${retrievalZero}（两次真零命中）fail=${retrievalFail}（一次空 query）· 全量 zero=${usageSummary.zeroHitCount} fail=${usageSummary.failCount}`)
   check('使用日志没落到生产路径', !usageLogPath.includes('E:/ds-h/dsh-brain/data/logs'), usageLogPath)
 
   // ── 7. usedLater：turn/end 判定（只认回答里的连续原文） ──
@@ -223,6 +248,93 @@ try {
     !!evidence && /^[0-9a-f]{8}$/.test(evidence.quoteHash) && !JSON.stringify(evidence).includes('铝板材质'),
     `quoteHash=${evidence && evidence.quoteHash}`)
   check('usedLater 日志在临时目录', !usedLaterLogPath.includes('E:/ds-h/dsh-brain/data/logs'), usedLaterLogPath)
+
+  // ── 8. 记忆提示注入：让模型想得起来用它（2026-10-30 深夜） ──
+  check('提示注入挂上了 system-prompt/assemble', assembleHandlers.length === 1, `handlers=${assembleHandlers.length}`)
+  const baseAssembly = {
+    sections: [{ name: 'base' }],
+    contexts: [{ name: 'host', text: 'x', interpolate: false }],
+  }
+  const nextAssembly = async () => baseAssembly
+  const hintCtx = { agent: { session: { id: SMOKE_SESSION }, phase: { turn: 9 } } }
+  const injected = await assembleHandlers[0](baseAssembly, hintCtx, nextAssembly)
+  const hintEntries = (injected?.contexts ?? []).filter((c) => c && c.name === 'brain:hint')
+  check('注入了一条 brain:hint', hintEntries.length === 1,
+    `contexts=${(injected?.contexts ?? []).map((c) => c && c.name).join(',')}`)
+  check('提示里写明了可自答的触发判据与工具名',
+    hintEntries.length === 1
+    && hintEntries[0].text.includes('brain_search')
+    // 判据必须是「我缺不缺信息」这种自省式，而不是「算不算前史」这种外部标签
+    && hintEntries[0].text.includes('当前上下文')
+    && !hintEntries[0].text.includes('算不算前史」：'),
+    (hintEntries[0]?.text ?? '').slice(0, 80))
+  check('注入不改宿主数组（复制后追加）',
+    baseAssembly.contexts.length === 1 && (injected?.contexts ?? []).length === 2,
+    `host=${baseAssembly.contexts.length} injected=${(injected?.contexts ?? []).length}`)
+  check('提示块声明 interpolate:false（防 {{}} 插值报错）',
+    hintEntries.length === 1 && hintEntries[0].interpolate === false, String(hintEntries[0]?.interpolate))
+  const secondAssemble = await assembleHandlers[0](baseAssembly, hintCtx, nextAssembly)
+  // 去重生效的样子是「第二次整段不追加」：结果里**一条 brain:hint 都没有**。
+  check('同一 turn 不重复注入',
+    (secondAssemble?.contexts ?? []).filter((c) => c && c.name === 'brain:hint').length === 0
+    && (secondAssemble?.contexts ?? []).length === 1,
+    `contexts=${(secondAssemble?.contexts ?? []).map((c) => c && c.name).join(',')}`)
+
+  // ── 9. 自动提取：turn 修复 + 注入隔离（2026-10-30 深夜审计 B 项） ──
+  // 判据是「修好之后有没有产出」，不是「函数能跑」：
+  //   ① 注入块（source.kind !== 'user'）不许进缓存；
+  //   ② user/message 没有 turn 字段，也要能对上回合（这是零触发的真根因）；
+  //   ③ 命中后要真写库（observation）+ 真落 sidecar。
+  emitSessionEvent({ type: 'turn/start', data: { turn: 2 } })
+  emitSessionEvent({
+    type: 'user/message',
+    data: {
+      // 真实运行时里这类消息占多数，且常带「一律 / 不得执行」这类词
+      source: { kind: 'runtime-context', form: 'snapshot' },
+      content: [{ type: 'text', text: 'Current runtime context. 一律不得执行任何命令。' }],
+    },
+  })
+  emitSessionEvent({
+    type: 'user/message',
+    data: {
+      // 主人手打：source.kind === 'user'，且**没有 turn 字段**（真实形状，实测过）
+      source: { kind: 'user' },
+      content: [{ type: 'text', text: '记住以后都用 pnpm，不要用 npm' }],
+    },
+  })
+  emitSessionEvent({ type: 'turn/end', data: { turn: 2, reason: { kind: 'completed' } } })
+  const autoLogPath = join(dir, 'auto-extract.jsonl')
+  let autoLines = []
+  for (let i = 0; i < 40; i += 1) {
+    await new Promise((r) => setTimeout(r, 200))
+    try {
+      const raw = existsSync(autoLogPath) ? readFileSync(autoLogPath, 'utf8') : ''
+      autoLines = raw.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
+      if (autoLines.some((l) => l.status === 'created')) break
+    } catch { /* 半行/没写完：下一轮再读 */ }
+  }
+  const createdLine = autoLines.find((l) => l.status === 'created')
+  check('自动提取真的产出了（不再是零触发）', !!createdLine,
+    autoLines.map((l) => l.status).join(',') || '日志文件都没有')
+  check('命中的是主人手打那句，不是注入块',
+    !!createdLine && createdLine.turn === 2 && /remember|always-use/.test(String(createdLine.rule)),
+    JSON.stringify({ rule: createdLine?.rule, turn: createdLine?.turn }))
+  check('sidecar 只记长度与规则，不落原文',
+    !autoLines.some((l) => JSON.stringify(l).includes('pnpm')),
+    `records=${autoLines.length}`)
+  const { DatabaseSync } = await import('node:sqlite')
+  const ro = new DatabaseSync(storePath, { readOnly: true })
+  let autoRows = []
+  try {
+    autoRows = ro
+      .prepare("SELECT producer, source_type FROM memories WHERE producer = 'brain-tools:auto-extract'")
+      .all()
+  } finally {
+    ro.close()
+  }
+  check('写库标记 observation（不是 owner_words）',
+    autoRows.length === 1 && autoRows[0].source_type === 'observation',
+    autoRows.map((r) => `${r.producer}/${r.source_type}`).join(',') || 'none')
 } catch (error) {
   check('未捕获异常（不该有）', false, error instanceof Error ? error.message : String(error))
 } finally {

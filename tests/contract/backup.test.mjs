@@ -55,7 +55,21 @@ test('快照是独立可打开的一致性副本（表计数与主账一致）',
   assert.equal(inspected.table_counts.events, countRows(ctx.brain.db, 'events'));
   assert.equal(inspected.table_counts.sessions, countRows(ctx.brain.db, 'sessions'));
   assert.equal(inspected.table_counts.outbox, countRows(ctx.brain.db, 'outbox'));
-  assert.equal(inspected.sqlite_version, '3.53.3');
+  // 快照由运行时 node:sqlite 写出，SQLite 版本随 node 版本变（本机 v22.22.2 → 3.51.2），
+  // 不能写死字面量。断言「快照里读到的版本 == 当前运行时的 SQLite 版本」：
+  // 跨 node 版本都稳定，且仍能证明快照是当前引擎写出、可被当前引擎读出。
+  const runtimeDb = new DatabaseSync(':memory:');
+  let runtimeSqliteVersion;
+  try {
+    const versionRow = /** @type {{ v?: string } | undefined} */ (
+      runtimeDb.prepare('SELECT sqlite_version() AS v').get()
+    );
+    runtimeSqliteVersion = String(versionRow?.v ?? '');
+  } finally {
+    runtimeDb.close();
+  }
+  assert.match(runtimeSqliteVersion, /^\d+\.\d+\.\d+$/, '必须能读到运行时 SQLite 版本');
+  assert.equal(inspected.sqlite_version, runtimeSqliteVersion);
 
   // 快照里的事件正文可读
   const copy = new DatabaseSync(snapshot.path, { readOnly: true });

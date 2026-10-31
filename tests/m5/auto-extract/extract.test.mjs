@@ -235,38 +235,38 @@ test('maxPerTurn：一条消息命中两条规则时，每轮只产出 1 条', (
 // 12-13. 配额
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('每会话每天配额 5：第 6 次判定返回 skipped: quota', (t) => {
+test('每会话每天配额 10：第 11 次判定返回 skipped: quota', (t) => {
   const ex = createAutoExtractor({ logPath: join(tempDir(t), 's.jsonl'), maxPerDay: 100 })
-  for (let i = 1; i <= 5; i += 1) {
+  for (let i = 1; i <= 10; i += 1) {
     ex.noteUserMessage('s1', i, '记住第 ' + i + ' 条事项')
     const got = ex.judgeTurn({ sessionId: 's1', turn: i })
     assert.equal(got.candidates.length, 1, '第 ' + i + ' 次应正常产出')
     assert.equal(got.skipped, null)
   }
-  ex.noteUserMessage('s1', 6, '记住第 6 条事项')
-  const sixth = ex.judgeTurn({ sessionId: 's1', turn: 6 })
-  assert.deepEqual(sixth.candidates, [])
-  assert.equal(sixth.skipped, 'quota')
+  ex.noteUserMessage('s1', 11, '记住第 11 条事项')
+  const eleventh = ex.judgeTurn({ sessionId: 's1', turn: 11 })
+  assert.deepEqual(eleventh.candidates, [])
+  assert.equal(eleventh.skipped, 'quota')
   // 配额是**判定即扣**：配额满了以后连候选都不产生。
   assert.equal(ex.stats().skippedQuota, 1)
 })
 
-test('全局每天配额 20：跨会话累计到 20 条后一律 quota', (t) => {
+test('全局每天配额 40：跨会话累计到 40 条后一律 quota', (t) => {
   const ex = createAutoExtractor({ logPath: join(tempDir(t), 's.jsonl') })
   let created = 0
   let quota = 0
-  // 5 个会话 × 5 条 = 25 次判定；前 4 个会话刚好吃满全局 20。
+  // 5 个会话 × 10 条 = 50 次判定；前 4 个会话刚好吃满全局 40。
   for (let s = 1; s <= 5; s += 1) {
-    for (let i = 1; i <= 5; i += 1) {
+    for (let i = 1; i <= 10; i += 1) {
       ex.noteUserMessage('s' + s, i, '记住第 ' + s + ' 会话第 ' + i + ' 条事项')
       const got = ex.judgeTurn({ sessionId: 's' + s, turn: i })
       if (got.skipped === 'quota') quota += 1
       else created += got.candidates.length
     }
   }
-  assert.equal(created, 20, '全局每天上限 20 条')
-  assert.equal(quota, 5, '第 21-25 次必须被全局配额挡住')
-  assert.equal(ex.stats().skippedQuota, 5)
+  assert.equal(created, 40, '全局每天上限 40 条')
+  assert.equal(quota, 10, '第 41-50 次必须被全局配额挡住')
+  assert.equal(ex.stats().skippedQuota, 10)
 })
 
 test('配额是内存计数：新建实例即归零，不读 sidecar', async (t) => {

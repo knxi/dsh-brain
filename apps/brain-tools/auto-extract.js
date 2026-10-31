@@ -45,8 +45,15 @@ import { dirname } from 'node:path'
 
 /** 消息缓存最多保留多少个会话（超出驱逐最早插入的会话）。 */
 export const MAX_SESSIONS = 64
-/** 单个会话最多缓存多少条用户消息（超出丢最旧）。 */
-export const MAX_MESSAGES_PER_SESSION = 4
+/**
+ * 单个会话最多缓存多少条用户消息（超出丢最旧）。
+ *
+ * 2026-10-30 从 4 提到 12：实测一个 turn 里宿主会推 6+ 条 `user/message`，其中绝大多数是
+ * 注入块（runtime-context / skill-catalog / agent-instructions …）。缓存只有 4 格时，
+ * 主人真说的那句话会被后续注入块挤出窗口。现在调用侧已按 `source.kind === 'user'` 白名单
+ * 收口（只缓存主人手打的字），12 是给多步回合与消息重发的余量。
+ */
+export const MAX_MESSAGES_PER_SESSION = 12
 /**
  * 单条消息进缓存前最多保留多少字符。
  *
@@ -237,6 +244,50 @@ const RULES = [
     lead: () => '主人拍板：',
   },
   {
+    rule: 'habit',
+    /**
+     * 为什么只认它（2026-10-31 放宽，决策①A）：
+     * 「我习惯 / 我一般 / 我通常 / 我平时」后面跟的是**稳定的做事方式**，
+     * 不是对此刻的描述——这和 first-person-fact 里被砍掉的「在」分支正好相反：
+     * 「在忙」是瞬时状态，「习惯晚上干活」是长期模式。
+     *
+     * 为什么不含「我总是」：「我总是忘」「我总是搞混」抽出来是自嘲，不是偏好。
+     */
+    trigger: /(?:我习惯|我一般|我通常|我平时|我一向|我从来都)/u,
+    anchor: 'after',
+    kind: () => 'preference',
+    type: () => 'profile',
+    lead: () => '主人的习惯：',
+  },
+  {
+    rule: 'future-rule',
+    /**
+     * 为什么只认它（2026-10-31 放宽，决策①A）：
+     * 「下次 / 每次 / 千万别 / 从此以后」带**将来时态**，说的是「以后要照做」，
+     * 这是一条规则而不是一次描述。always-use 只认「以后都」这种最硬的写法，
+     * 实际对话里更常见的是「下次记得先备份」这类条件式要求，全被漏掉了。
+     *
+     * 为什么不用 `以后(?!都)` 收全部「以后」：「以后有钱了想买个…」是设想，
+     * 不是要求；只收带祈使/否定的那几种构词，宁可漏。
+     */
+    trigger: /(?:从此以后|下次|每次|往后再|千万别|千万不要)/u,
+    anchor: 'after',
+    /**
+     * 否定还原：内容是从触发词**之后**切的，于是「千万别动那个目录」会抽成
+     * 「动那个目录」——**否定词丢了，语义正好反了**。存进库比漏掉更糟：
+     * 以后召回这条会建议主人「动那个目录」。所以这里把丢掉的那半个词补回去。
+     */
+    contentPrefix: (hitText) => (/千万(?:别|不要)/u.test(hitText) ? '别' : ''),
+    /**
+     * 内容否决：`每次都是这样` / `下次再说` 抽出来是语气词，不是规则。
+     * 前者是抱怨，后者是推托——两者都很常见，且字面完全合规。
+     */
+    veto: /^(?:都|都是|都是这样|这样|再说|再看|再议|吧)/u,
+    kind: () => 'preference',
+    type: () => 'profile',
+    lead: () => '主人要求以后照做：',
+  },
+  {
     rule: 'first-person-fact',
     /**
      * 为什么只认它：
@@ -259,8 +310,13 @@ const RULES = [
      * 词表兜底，但词表外一律漏网，而这类漏网最难抽检——「我这边在杭州出差」抽出来
      * 长得完全像事实。按「宁可漏不能错」的立场，这个面值得一次性消掉，
      * 代价只是漏掉极少数「我这边在<城市>」。
+     *
+     * 2026-10-31 扩到 `做|干|负责`：原表只认「是/用」，于是「我的工作做广告设计」
+     * 「我这边负责建筑资料」这类**职业/职责自述**全部漏掉——而它们恰恰是最该记住的
+     * 稳定事实。这三个动词本身是断言性的（「做/干/负责」后面必然跟对象），
+     * 不像「在」那样同时承担进行时标记，所以单独扩这几个是安全的。
      */
-    need: /(?:是|用)/u,
+    need: /(?:是|用|做|干|负责)/u,
     /**
      * 保险丝（两个条件互相独立，命中任一就否决）：
      * - `veto`：瞬时状态（「我这边在忙」「我这边在跑测试」）——不是稳定事实；
@@ -398,7 +454,9 @@ export function extractCandidates(text) {
       if (rule.veto && rule.veto.test(clause)) continue
       if (rule.vetoExtra && rule.vetoExtra.test(clause)) continue
       if (DENY_CONTENT.test(clause)) continue
-      const content = cleanContent(clause)
+      // 否定还原：有的规则会把触发词里的否定词留在外面（见 future-rule 的 contentPrefix）。
+      const prefix = typeof rule.contentPrefix === 'function' ? String(rule.contentPrefix(hit[0]) || '') : ''
+      const content = cleanContent(prefix + clause)
       if (!isSubstantive(content)) continue
       const kind = rule.kind(content)
       const type = rule.type(kind)
@@ -473,17 +531,19 @@ function makeDirEnsurer(filePath) {
  *
  * @param {object} [options]
  * @param {string} [options.logPath] sidecar JSONL 落点（测试必须传临时路径）
- * @param {number} [options.maxPerTurn] 每轮最多几条候选，默认 1
- * @param {number} [options.maxPerSessionDay] 每会话每天最多几条，默认 5
- * @param {number} [options.maxPerDay] 全局每天最多几条，默认 20
+ * @param {number} [options.maxPerTurn] 每轮最多几条候选，默认 2
+ * @param {number} [options.maxPerSessionDay] 每会话每天最多几条，默认 10
+ * @param {number} [options.maxPerDay] 全局每天最多几条，默认 40
  * @param {boolean} [options.enabled] 总开关，默认 true
  */
 export function createAutoExtractor(options = {}) {
   const opts = options && typeof options === 'object' ? options : {}
   const logPath = typeof opts.logPath === 'string' && opts.logPath ? opts.logPath : DEFAULT_AUTO_EXTRACT_LOG
-  const maxPerTurn = clampInt(opts.maxPerTurn, 1, 1, 10)
-  const maxPerSessionDay = clampInt(opts.maxPerSessionDay, 5, 0, 200)
-  const maxPerDay = clampInt(opts.maxPerDay, 20, 0, 1000)
+  // 2026-10-31 放宽（决策①A）：实测「每轮 1 条、每天 20 条」在真实对话里从没打满过——
+  // 卡住的不是配额，是规则覆盖。但规则一放宽，配额就会成为新瓶颈，所以同步上调。
+  const maxPerTurn = clampInt(opts.maxPerTurn, 2, 1, 10)
+  const maxPerSessionDay = clampInt(opts.maxPerSessionDay, 10, 0, 200)
+  const maxPerDay = clampInt(opts.maxPerDay, 40, 0, 1000)
   const enabled = opts.enabled !== false
 
   /**

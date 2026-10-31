@@ -157,7 +157,7 @@ import { createPersonaImporter } from './import-persona.js';
 import { createPersonaProfiles, createPersonaVersions } from './persona.js';
 import { createPersonModels } from './person-model.js';
 import { createRelationships } from './relationship.js';
-import { createSocial } from './social.js';
+import { createSocial, SOCIAL_SOURCE_STATE } from './social.js';
 import { createResponse } from './response.js';
 import { DEFAULT_PERSON_ID, resolveScopeId } from './util.js';
 
@@ -197,7 +197,14 @@ export function createPersona(options) {
   const profiles = createPersonaProfiles({ ...base, importer });
   const persons = createPersonModels(base);
   const relationships = createRelationships(base);
-  const social = createSocial({ ...base, channel: options.channel ?? null });
+  // `signals`：可选的「会话信号索引」读取器（返回 { signals: { care, commitment } }）。
+  // 门面里 care/commitment 先查记忆库，查不到时才用它兜底——那是真实会话坐标，
+  // 不是编造内容（见 session-signal-index.js）。
+  const social = createSocial({
+    ...base,
+    channel: options.channel ?? null,
+    signals: typeof options.signals === 'function' ? options.signals : null,
+  });
   const response = createResponse({ ...base, strictProtected: options.strictProtected === true });
 
   /**
@@ -229,8 +236,19 @@ export function createPersona(options) {
     gate,
     /** 与 gate 同义，便于面板直接展示 */
     switches: gate,
-    /** 本包实现的候选来源 / 刻意没做的来源（诚实列出，供 UI 标注） */
-    sources: { implemented: IMPLEMENTED_SOCIAL_SOURCES, pending: PENDING_SOCIAL_SOURCES, all: SOCIAL_SOURCES },
+    /**
+     * 本包实现的候选来源 / 刻意没做的来源（诚实列出，供 UI 标注）。
+     *
+     * 2026-10-31 改：不再 re-export `util.js` 的静态快照——那两个常量是「某一轮的
+     * 实现状态」，来源实现变了它不会跟着变，页面照着它显示就会撒谎。
+     * 这里一律从 `SOCIAL_SOURCE_STATE` 推导，`states` 再带上每个来源「缺什么」。
+     */
+    sources: {
+      implemented: Object.keys(SOCIAL_SOURCE_STATE).filter((source) => SOCIAL_SOURCE_STATE[source].implemented),
+      pending: Object.keys(SOCIAL_SOURCE_STATE).filter((source) => !SOCIAL_SOURCE_STATE[source].implemented),
+      all: SOCIAL_SOURCES,
+      states: SOCIAL_SOURCE_STATE,
+    },
   };
 }
 

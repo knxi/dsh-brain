@@ -52,7 +52,8 @@
 
 冒烟：`node apps/brain-tools/smoke.mjs` → **25/25**，用临时库，不碰生产。
 
-验收：`node --test "tests/**/*.test.mjs"` → **576 / 576 全绿**（0 skipped；含 M4.5 使用统计 14 条、M6 实体 20 条、§22.3 评测 2 条）
+验收：`node --test "tests/**/*.test.mjs"` → **989 / 989 全绿**（0 skipped；2026-10-30 实测，约 5 分 42 秒；
+含 M4.5 使用统计 14 条、M6 实体 20 条、M8 四系统 292 条、§22.3 评测 2 条）
 
 **§22.3 质量评测（MVP 发布门槛）**：`node tools/run-eval.mjs` → 120 个固定用例、7 类配额、五项门槛。
 当前 **Recall@10 99.0% · 精确值 100% · 旧值误用 0 · 来源可追溯 100% · 无答案误答 0/15**，
@@ -227,7 +228,7 @@ Engram 的 `node_id` → 我们的 `memory_id` 靠 `source_refs.source_event_id`
 
 | 动作 | 结果 |
 |---|---|
-| 单击星点 | 进入聚焦：217 → 它 + 邻居（实测 3 个），dist 1250 → 520，panX/panY 对准 |
+| 单击星点 | 进入聚焦：218 → 它 + 邻居（实测 3 个），dist 1250 → 520，panX/panY 对准 |
 | 点空白 / Esc / 回到全部 | 退出聚焦：恢复全量，相机归位 |
 
 右侧面板同时给出 ID、版本、重要度、有效期、邻居数、引用数；底部工具栏有「复制 ID」「去列表里搜」。
@@ -272,7 +273,7 @@ Engram 的 `node_id` → 我们的 `memory_id` 靠 `source_refs.source_event_id`
 |---|---|
 | 迁移工具 | `tools/survey-memory-sources.mjs` / `import-engram.mjs` / `verify-import.mjs` |
 | 结果 | 收集 208 → 去重 2 → 脱敏 4 → **导入 205，失败 0** |
-| 现在总量 | **217 条记忆、217 条来源引用**（每条都有出处） |
+| 现在总量 | **226 条记忆（218 active / 7 superseded / 1 deleted）、225 条来源引用**（1 条无来源，见 `docs/audit/C-data.md`） |
 | 类型分布 | semantic 169 / skill 19 / profile 16 / episode 13 |
 
 **灵枢没迁**：它那 33 个节点全是对话原文（`layer=contextual` / `role=user`），价值在自动注入机制不在数据。
@@ -298,15 +299,19 @@ dsh-brain/
 ├─ apps/
 │  ├─ probe/       # M0 接入探针（只记录不干预）
 │  ├─ connector/   # DSH 连接插件（cordis）
-│  ├─ brain-tools/ # 生产在跑：三个显式工具 + 控制台/心海/使用情况三页
-│  ├─ server/      # Brain Service，仅 127.0.0.1
-│  └─ console/     # 只读可视化控制台
+│  ├─ brain-tools/ # 生产在跑：三个显式工具 + 11 个页面 + 27 个 API + 记忆提示注入
+│  ├─ server/      # 治理服务（7420，DSH 进程内起）：删除 / 备份 / 恢复
+│  └─ console/     # 7420 治理面板前端（可读可写，写操作需 token；不再只是只读检查器）
 ├─ packages/
 │  ├─ core/        # 事件信封、ID、时钟、错误类型
-│  ├─ memory/      # 主账：schema、迁移、事务、outbox、删除屏障
+│  ├─ memory/      # 主账：schema、迁移、事务、outbox、删除屏障、备份/恢复、心情
 │  ├─ search/      # 中文检索：FTS5、n-gram 兜底、RRF 融合
-│  ├─ context/     # 检索→构包→Token 预算→built/attached/sent
-│  └─ backup/      # 全量快照、校验、隔离恢复
+│  ├─ context/     # 检索→构包→Token 预算（**未接生产**：connector 未上线）
+│  ├─ workspace/   # 全局工作空间：开关/事件/焦点/候选（M8，**无驱动器**）
+│  ├─ cognition/   # 类脑：显著性/反思/技能/免疫/看门狗（M8，**无驱动器**）
+│  ├─ persona/     # 人格/关系/主动社交/回复五态（M8，**无驱动器 + 无外发通道**）
+│  ├─ directives/  # 自主指令：状态机/队列/预算/L0-L3（M8，**hooks 全 null**）
+│  └─ （无独立 backup 包：快照 / 校验 / 隔离恢复在 `memory/src/backup.js` 与 `memory/src/restore.js`）
 ├─ migrations/     # SQL 迁移
 ├─ data/           # brain.db / events / blobs / exports / backups / logs / probe
 ├─ tests/          # contract / search / m2 / m3 / m4

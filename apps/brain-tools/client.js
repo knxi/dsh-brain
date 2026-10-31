@@ -50,6 +50,17 @@ window.__ModuleLoader__.load({
       ensureStyle()
       const [stats, setStats] = React.useState(null)
       const [failed, setFailed] = React.useState(false)
+      // 治理服务（默认 7420）状态：它跑在 dsh web 进程内，不是独立进程，
+      // 所以要靠一个接口问它「现在活着吗」，停/启也走同一组接口。
+      const [gov, setGov] = React.useState(null)
+      const [govBusy, setGovBusy] = React.useState(false)
+
+      const loadGov = React.useCallback(() => {
+        fetch('/dsh-brain/api/governance/status', { credentials: 'same-origin' })
+          .then((r) => r.json())
+          .then((d) => { if (d && d.ok) setGov(d) })
+          .catch(() => { /* 拿不到就显示 …，不编状态 */ })
+      }, [])
 
       React.useEffect(() => {
         let alive = true
@@ -59,6 +70,33 @@ window.__ModuleLoader__.load({
           .catch(() => { if (alive) setFailed(true) })
         return () => { alive = false }
       }, [])
+
+      React.useEffect(() => { loadGov() }, [loadGov])
+
+      const toggleGov = async () => {
+        if (govBusy) return
+        setGovBusy(true)
+        try {
+          const running = !!(gov && gov.running)
+          const url = running ? '/dsh-brain/api/governance/stop' : '/dsh-brain/api/governance/start'
+          const response = await fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-Brain-Action': '1' },
+            body: '{}',
+          })
+          const data = await response.json().catch(() => ({ ok: false, message: '服务端返回的不是 JSON' }))
+          if (!data || data.ok !== true) {
+            window.alert(String((data && data.message) || '操作没成功'))
+            return
+          }
+          loadGov()
+        } catch (error) {
+          window.alert(String(error && error.message ? error.message : error))
+        } finally {
+          setGovBusy(false)
+        }
+      }
 
       const openConsole = () => { window.open('/dsh-brain', '_blank', 'noopener') }
 
@@ -90,21 +128,40 @@ window.__ModuleLoader__.load({
             h('div', { className: 'bt-k' }, '库'),
             h('div', { className: 'bt-v' }, (stats && stats.dbPath) || '—'),
           ),
+          h('div', { className: 'bt-row' },
+            h('div', { className: 'bt-k' }, '治理服务'),
+            h('div', { className: 'bt-v' },
+              gov === null ? '…' : (gov.running ? '运行中（:' + gov.port + '）' : '已停止')),
+          ),
         ),
 
         h('div', { className: 'bt-actions' },
           h('button', { className: 'bt-btn primary', onClick: openConsole }, '打开控制台'),
-          h('a', {
-            className: 'bt-btn',
-            href: 'http://127.0.0.1:7420/',
-            target: '_blank',
-            rel: 'noopener',
-          }, '治理面板（删除 / 备份）'),
+          gov !== null && gov.running
+            ? h('button', {
+              className: 'bt-btn',
+              disabled: govBusy || !gov.controllable,
+              onClick: toggleGov,
+              title: gov.controllable ? '' : '这个端口是别的进程占着的，本插件只是代理过去',
+            }, govBusy ? '处理中…' : (gov.controllable ? '停止治理服务' : '停止（端口非本进程）'))
+            : h('button', {
+              className: 'bt-btn',
+              disabled: govBusy || !!(gov && gov.disabled),
+              onClick: toggleGov,
+            }, govBusy ? '处理中…' : '启动治理服务'),
+          gov !== null && gov.running
+            ? h('a', {
+              className: 'bt-btn',
+              href: 'http://127.0.0.1:' + gov.port + '/',
+              target: '_blank',
+              rel: 'noopener',
+            }, '打开治理面板')
+            : null,
         ),
 
         h('div', { className: 'bt-note' },
-          '控制台是只读视图：能查、能看来源和版本。删除与恢复这类操作在独立治理面板里，' +
-          '需要单独起 apps/server 才有。'),
+          '控制台是只读视图：能查、能看来源和版本。删除与恢复这类操作在治理面板里，' +
+          '它跑在 dsh web 进程内（默认 7420，只监听本机回环），可以在这里启动或停止。'),
       )
     }
 

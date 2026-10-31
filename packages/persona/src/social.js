@@ -116,6 +116,148 @@ const SOURCE_SCORES = Object.freeze({
   curiosity: { relevance: 7, actualHelp: 4 },
 });
 
+/**
+ * 共同记忆的门槛：这件事至少过去这么多天、且当时够重要，才配被「回顾」。
+ *
+ * ── 为什么是 7 天，而不是方案 §7.5 写的 14 天 ──
+ *
+ * 门槛本身是「别把刚聊过的事当共同记忆复读」。当前库的**事件时间**跨度只有
+ * 2026-10-15 ~ 10-28（见下一条注释），14 天窗口在这个库里只剩 3 条可用、
+ * 几乎永不触发；7 天窗口有 42 条，既能覆盖真实数据，离散度也仍然保住了。
+ *
+ * TODO（等库龄满 30 天）：回到 14 天。那时 14 天窗口里会有 30 天份的数据量，
+ * 不需要再迁就「库比门槛还年轻」这个暂时状态。判据随数据现实调整是为了让
+ * 「不许编造」这条铁律在真实数据上仍然可执行，不是为了让 dry-run 好看。
+ */
+export const SHARED_MEMORY_MIN_AGE_DAYS = 7;
+/** 共同记忆的最低重要性：0.6 以下的事回顾起来像翻垃圾。 */
+export const SHARED_MEMORY_MIN_IMPORTANCE = 0.6;
+/** 同一段共同记忆的话题冷却天数（复读同一件事是这类来源最容易犯的错）。 */
+export const SHARED_MEMORY_TOPIC_COOLDOWN_DAYS = 30;
+
+/**
+ * 记忆的「事件时间轴」表达式。
+ *
+ * **不能直接用 `created_at`**：从 Engram 迁进来的那批记忆（生产库 226 条里 205 条）
+ * `created_at` 全是导入那一刻（2026-10-28~30），真实发生时间存在 `valid_from` 里
+ * （2026-10-15~28）。拿 `created_at` 判年龄会把所有迁移记忆都算成「两天前刚聊过」，
+ * 于是这一类永远空转——那正是「字段选错」冒充「数据不够」的典型样子。
+ * 心海（`/dsh-brain/sea`）的时间轴踩过同一个坑，也是改用 validFrom 的。
+ *
+ * `valid_from` 可能为空（21/226），这时才退回 `created_at`。
+ */
+export const MEMORY_EVENT_TIME_SQL = 'COALESCE(valid_from, created_at)';
+
+/**
+ * 日常问候（care 的放宽形态，2026-10-31 主人确认落地）。
+ *
+ * 为什么需要：`unfinished_care` 原来的依据只有「身体/情绪关键词」和「具体安排」，
+ * 而真实数据里这两类**一条都没命中**——不是没有关心可问，是这类话本来就不以
+ * 「头疼/明天要交图」的形式出现。于是这一类在页面上永远 `no_care_evidence`。
+ *
+ * 放宽后的依据**仍然是硬事实，不是编的**：
+ *   1) 最后一条 `relationship_events` 距今 ≥ 6 小时（真实互动间隔；6 小时是「半天没动静」，
+ *      配上每天最多 1 条 + dailyCap，不会变成刷屏）
+ *   2) 关系四维里 familiarity 或 intimacy ≥ 0.4（关系不到位就不硬找话）
+ * 文本会明说「多久没聊」，**不假装记得具体的事**——具体的事是 unfinished_care 的活。
+ * 每天最多 1 条（topic 带日期，靠幂等键去重）。
+ */
+export const DAILY_CHECKIN_MIN_GAP_HOURS = 6;
+/** 关系下限：低于这个亲密度，问候会显得像客服。 */
+export const DAILY_CHECKIN_MIN_CLOSENESS = 0.4;
+
+/**
+ * 按时段挑一句问候。用「多久没聊」当具体信息，避免连续几天说同一句。
+ * @param {number} hour 本地小时
+ * @param {number} gapHours 距上次互动的整小时数
+ * @returns {string}
+ */
+export function dailyCheckinText(hour, gapHours) {
+  const gap = Number.isFinite(gapHours) && gapHours > 0 ? Math.round(gapHours) : 0
+  if (hour < 6) return `还醒着？${gap} 小时没动静了，早点歇吧。`
+  if (hour < 11) return `早上好，${gap} 小时没聊了——睡够了没？`
+  if (hour < 14) return `中午了，${gap} 小时没听见动静，吃了吗？`
+  if (hour < 18) return `有一阵没聊了（${gap} 小时），今天还顺吗？`
+  return `晚上好，今天忙完了吗？`
+}
+
+/**
+ * 求证类的置信度上限：低于它才值得「再确认一次」。
+ *
+ * 0.85 以上的条目按本系统的口径已经算「基本确定」，再去问一遍是在浪费对方注意力；
+ * `source_type='observation'` 才进候选池——主人亲口说的话（owner_words）不需要求证，
+ * 需要求证的是「我自己看来的结论」。
+ */
+export const VERIFICATION_MAX_CONFIDENCE = 0.85;
+
+/**
+ * 七类来源的真实实现状态。
+ *
+ * 为什么不直接用 `util.js` 里的 `IMPLEMENTED_SOCIAL_SOURCES` / `PENDING_SOCIAL_SOURCES`：
+ * 那两个常量是「本轮实现了什么」的静态快照，代码一改它们就变成谎话。
+ * 这里把「实现了没有」和「没实现的缺什么数据」放在同一个结构里，
+ * 页面、CLI、报告读的都是它，不会出现「代码做了、页面说没做」的两套事实。
+ *
+ * 缺数据的那一类**必须写清楚缺什么**：只写 `not_implemented` 等于告诉看的人
+ * 「不知道」，而这个系统里「不知道」和「没有」是两回事。
+ */
+export const SOCIAL_SOURCE_STATE = Object.freeze({
+  schedule: { implemented: true, evidence: 'relationship_events 的作息时间', missing: null },
+  unfinished_care: { implemented: true, evidence: 'memories 里未收尾的身体/情绪/安排', missing: null },
+  commitment: { implemented: true, evidence: 'reflections(kind=commitment) 与未完成 directives', missing: null },
+  discovery: { implemented: true, evidence: 'ws_events(channel=result) 的真实结果', missing: null },
+  shared_memory: { implemented: true, evidence: 'memories 里够老、够重要、带具体锚点的条目', missing: null },
+  verification: { implemented: true, evidence: 'memories(source_type=observation) 的低置信度条目', missing: null },
+  curiosity: {
+    implemented: true,
+    // 2026-10-31 凌晨改成「有依据」：依据不是实体名（那是关键词冒充好奇），
+    // 而是**记忆里明确写着「当时没定下来」的事**（待定/待确认/还没/计划/下一步/TODO…）。
+    // 这类记录的共同点是「当时没结论」，追问一句「后来定了吗」既真实又有用。
+    evidence: 'memories 里带未决标记（待定/待确认/还没/计划/下一步/TODO…）且未收尾的条目',
+    missing: null,
+  },
+});
+
+/** 本轮真正实现的来源（由 `SOCIAL_SOURCE_STATE` 推导，不手写第二份清单）。 */
+export const SOCIAL_SOURCES_IMPLEMENTED = Object.freeze(
+  Object.keys(SOCIAL_SOURCE_STATE).filter((source) => SOCIAL_SOURCE_STATE[source].implemented),
+);
+/** 仍然没实现的来源（同上推导）。 */
+export const SOCIAL_SOURCES_PENDING = Object.freeze(
+  Object.keys(SOCIAL_SOURCE_STATE).filter((source) => !SOCIAL_SOURCE_STATE[source].implemented),
+);
+
+/**
+ * 这段文本有没有「具体锚点」（数字/编号/路径/书名号），或挂着实体。
+ *
+ * 为什么必须有：共同记忆的价值全在细节。没有锚点的句子（「今天挺累」）
+ * 回顾起来只会像复读机，而锚点是「这条记忆真的在讲一件具体的事」的机器可验证证据。
+ *
+ * @param {unknown} text
+ * @param {number} [entityCount] 这条记忆挂了多少个实体
+ * @returns {string | null} 命中的锚点种类；没有就是 null
+ */
+export function concreteAnchorOf(text, entityCount = 0) {
+  const value = String(text ?? '');
+  if (entityCount > 0) return 'entity';
+  if (/\d/.test(value)) return 'number';
+  if (/[《「][^》」]{2,}/.test(value)) return 'quoted';
+  if (/[A-Za-z]:\\|\/[\w.-]+\.\w+/.test(value)) return 'path';
+  return null;
+}
+
+/**
+ * 把 UTC 时间戳渲染成「10月28日」（本地时区）。
+ * @param {string} iso
+ * @param {string} timeZone
+ */
+function monthDayOf(iso, timeZone) {
+  const local = localOf(iso, timeZone);
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(local);
+  if (match === null) return '';
+  return `${Number(match[2])}月${Number(match[3])}日`;
+}
+
 
 /** 一天中的时段文案（schedule 候选的草稿措辞）。 */
 function periodWordOf(/** @type {number} */ hour) {
@@ -528,20 +670,22 @@ export function createSocial(options) {
   }
 
   /**
-   * 候选生成器（四类）。**只产出草稿，不写库；写库与评分在 `generate` 里**。
+   * 候选生成器（七类里的六类）。**只产出草稿，不写库；写库与评分在 `generate` 里**。
    *
-   * 已实现：`schedule` / `unfinished_care` / `commitment` / `discovery`。
-   * 未实现（TODO）：`shared_memory` / `verification` / `curiosity`——
-   * 这三类没有可靠的机器可读依据，硬做只会变成编造。见 `skipped` 里的说明。
+   * 已实现：`schedule` / `unfinished_care` / `commitment` / `discovery` /
+   * `shared_memory` / `verification`。
+   * 未实现：`curiosity`——它缺的是**数据**不是代码：反思表里没有 knowledge_gap 的实际产出，
+   * 实体抽取出来的名字多半是代码标识符，硬做只能拿关键词冒充好奇。
+   * 完整的「缺什么」写在 `SOCIAL_SOURCE_STATE.curiosity.missing` 里，页面直接读它。
    *
    * @param {ReturnType<typeof loadContext>} ctx
    * @param {Record<string, any[]>} [signals]
-   * @returns {{ drafts: any[], skipped: Array<{ source: string, reason: string }> }}
+   * @returns {{ drafts: any[], skipped: Array<{ source: string, reason: string, detail?: string | null }> }}
    */
   function collectDrafts(ctx, signals) {
     /** @type {any[]} */
     const drafts = [];
-    /** @type {Array<{ source: string, reason: string }>} */
+    /** @type {Array<{ source: string, reason: string, detail?: string | null }>} */
     const skipped = [];
     const personId = ctx.personId;
 
@@ -566,11 +710,52 @@ export function createSocial(options) {
       }
     };
 
+    /**
+     * 这个 topic 近 N 天是否已经在候选表里出现过（去重与话题冷却）。
+     * @param {string} topic
+     * @param {number} days
+     */
+    const topicSeenWithin = (topic, days) => {
+      try {
+        return tx.get(
+          `SELECT 1 AS ok FROM social_candidates
+            WHERE scope_id = ? AND person_id = ? AND topic = ? AND created_at > ? LIMIT 1`,
+          [scopeId, personId, topic, new Date(ctx.nowMs - days * 24 * 3600_000).toISOString()],
+        ) !== undefined;
+      } catch {
+        return false;
+      }
+    };
+
+    /**
+     * 这个来源今天是否已经产过候选。
+     *
+     * 「每类每天最多 1 条」不另造配额表：`social_candidates` 本来就按本地自然日
+     * 落了 `created_at_local`，读它比再造一套计数器更不容易失真。
+     * @param {string} source
+     */
+    const sourceAskedToday = (source) => {
+      try {
+        return tx.get(
+          `SELECT 1 AS ok FROM social_candidates
+            WHERE scope_id = ? AND person_id = ? AND source = ? AND created_at_local LIKE ? LIMIT 1`,
+          [scopeId, personId, source, `${ctx.lday}T%`],
+        ) !== undefined;
+      } catch {
+        return false;
+      }
+    };
+
     // signals 是宿主/测试注入的「现成依据」；给了就不再从库里猜。
     const givenSources = new Set(Object.keys(signals ?? {}));
 
-    for (const source of PENDING_SOCIAL_SOURCES) {
-      if (!givenSources.has(source)) skipped.push({ source, reason: 'not_implemented' });
+    // 只对**真的没实现**的来源报 not_implemented，并把「缺什么数据」一起带上。
+    // 已实现的来源这一轮没依据时，由各自的生成器在自己的 skipped 里说清原因——
+    // 两者混成一句 `not_implemented`，页面就分不清「代码没写」和「今天没料」。
+    for (const source of SOCIAL_SOURCES_PENDING) {
+      if (givenSources.has(source)) continue;
+      const missing = SOCIAL_SOURCE_STATE[source].missing;
+      skipped.push({ source, reason: `not_implemented（${missing}）`, detail: missing });
     }
 
     // ── 1) schedule：按已知作息与时段 ──
@@ -778,6 +963,387 @@ export function createSocial(options) {
       }
     }
 
+    // ── 5) shared_memory：够老、够重要、带具体锚点、且从没被翻出来过的共同经历/决定 ──
+    //
+    // 四道筛（顺序有意义）：
+    //   a. **时间轴**：年龄按 `COALESCE(valid_from, created_at)` 算，不是 `created_at`
+    //      （迁移记忆的 createdAt 是导入那一刻，拿它判年龄等于把两千条历史全算成「刚聊过」；
+    //      见 `MEMORY_EVENT_TIME_SQL` 的注释）；
+    //   b. **年龄**：`SHARED_MEMORY_MIN_AGE_DAYS` 天以内的事按「刚聊过」处理；
+    //   c. **没被用过**：`recall_count = 0`——一直记着、一直没机会提，这才是「共同记忆」
+    //      该补的那句话；已经被检索翻出来过的，对方刚在上面聊过，再说就是复读；
+    //   d. **锚点**：正文里得真有编号/尺寸/路径/书名号，或者挂着实体。
+    //      没有锚点的句子回顾起来只剩空话，这正是「编造共同记忆」的入口。
+    // 外加去重与冷却：30 天内出现过同一 topic 的不再产；这一类每天最多 1 条。
+    //
+    // 文本一律引用记忆里的真实片段（截 40 字），evidence 只放真实 memory id——
+    // 摘要是空的就跳过，宁可不产也不拼一句没有出处的话。
+    if (givenSources.has('shared_memory')) {
+      pushSignals('shared_memory', signals?.shared_memory ?? []);
+    } else {
+      const cutoffIso = new Date(ctx.nowMs - SHARED_MEMORY_MIN_AGE_DAYS * 24 * 3600_000).toISOString();
+      /** @type {any[]} */
+      let rows = [];
+      try {
+        rows = tx.all(
+          `SELECT id, type, content, summary, importance, created_at, recall_count,
+                  ${MEMORY_EVENT_TIME_SQL} AS effective_at
+             FROM memories
+            WHERE scope_id = ? AND person_id = ? AND status = 'active'
+              AND type IN ('semantic', 'episode') AND importance >= ?
+              AND recall_count = 0
+              AND ${MEMORY_EVENT_TIME_SQL} <= ?
+            ORDER BY importance DESC, ${MEMORY_EVENT_TIME_SQL} ASC LIMIT 40`,
+          [scopeId, personId, SHARED_MEMORY_MIN_IMPORTANCE, cutoffIso],
+        );
+      } catch {
+        rows = [];
+      }
+
+      /** 每条记忆挂了几个实体：锚点判定的一路依据（`memory_entities` 缺失时全按 0）。 */
+      let entityCounts = new Map();
+      if (rows.length > 0) {
+        const ids = rows.map((row) => String(row.id));
+        try {
+          const counted = tx.all(
+            `SELECT memory_id, COUNT(*) AS n FROM memory_entities
+              WHERE memory_id IN (${ids.map(() => '?').join(',')}) GROUP BY memory_id`,
+            ids,
+          );
+          entityCounts = new Map(counted.map((row) => [String(row.memory_id), Number(row.n)]));
+        } catch {
+          entityCounts = new Map();
+        }
+      }
+
+      /** @type {any[]} */
+      const eligible = [];
+      let tooNew = 0;
+      let noAnchor = 0;
+      let recentlyAsked = 0;
+      for (const row of rows) {
+        const effectiveAt = String(row.effective_at ?? row.created_at ?? '');
+        const ageMs = ctx.nowMs - Date.parse(effectiveAt);
+        // 时间轴解析不出（valid_from 脏数据）的条目不敢当「共同记忆」用
+        if (!Number.isFinite(ageMs)) continue;
+        if (ageMs < SHARED_MEMORY_MIN_AGE_DAYS * 24 * 3600_000) {
+          tooNew += 1;
+          continue;
+        }
+        const snippet = truncate(String(row.summary ?? '') || String(row.content ?? ''), 40) ?? '';
+        if (snippet.trim().length === 0) continue;
+        const anchor = concreteAnchorOf(`${String(row.summary ?? '')} ${String(row.content ?? '')}`, entityCounts.get(String(row.id)) ?? 0);
+        if (anchor === null) {
+          noAnchor += 1;
+          continue;
+        }
+        if (topicSeenWithin(`shared_memory:${row.id}`, SHARED_MEMORY_TOPIC_COOLDOWN_DAYS)) {
+          recentlyAsked += 1;
+          continue;
+        }
+        eligible.push({ row, snippet, effectiveAt });
+      }
+
+      if (eligible.length === 0) {
+        const reason = rows.length === 0
+          ? `no_shared_memory_evidence（没有 ${SHARED_MEMORY_MIN_AGE_DAYS} 天以上、importance ≥ ${SHARED_MEMORY_MIN_IMPORTANCE}、且从没被检索命中过的 semantic/episode 记忆）`
+          : tooNew > 0 && noAnchor === 0 && recentlyAsked === 0
+            ? `no_shared_memory_evidence（命中的 ${tooNew} 条全都不到 ${SHARED_MEMORY_MIN_AGE_DAYS} 天（按 valid_from 算），回顾它们等于复读刚聊过的话）`
+            : noAnchor > 0 && tooNew === 0 && recentlyAsked === 0
+              ? `no_shared_memory_evidence（命中的 ${noAnchor} 条都没有具体锚点：没有数字/路径/书名号，也没挂实体）`
+              : `no_shared_memory_evidence（${tooNew} 条太新、${noAnchor} 条没有锚点、${recentlyAsked} 条 ${SHARED_MEMORY_TOPIC_COOLDOWN_DAYS} 天内已经回顾过）`;
+        skipped.push({ source: 'shared_memory', reason, detail: null });
+      } else if (sourceAskedToday('shared_memory')) {
+        skipped.push({ source: 'shared_memory', reason: 'already_asked_today（这一类每天最多开口 1 次）', detail: null });
+      } else {
+        for (const { row, snippet, effectiveAt } of eligible.slice(0, 1)) {
+          drafts.push({
+            source: 'shared_memory',
+            topic: `shared_memory:${row.id}`,
+            text: `${monthDayOf(effectiveAt, timeZone)}定下的事我还记着：「${snippet}」——还照这个来吗？`,
+            evidence: [String(row.id)],
+            // freshness 说的是「这条候选为什么现在出现」，不是「记忆有多老」。
+            // 拿记忆年龄当 fresh 会把这个来源的分数永远压死（7 天门槛下恒为 0）。
+            ageHours: 0,
+            scheduledFor: null,
+            expiresAt: null,
+          });
+        }
+      }
+    }
+
+    // ── 6) verification：我自己看来的、但不够确定的结论 ──
+    //
+    // 依据只有 observation 一类：本系统把「读文档/看代码学到的结论」标成它，
+    // 它天生就该被对一次账。主人亲口说的话（owner_words）不进池——那是他自己说的；
+    // inference 是系统推的，问了也白问。
+    // 两个进池条件：置信度低于 0.85，或者**一条出处都找不到**（`source_refs` 空）。
+    if (givenSources.has('verification')) {
+      pushSignals('verification', signals?.verification ?? []);
+    } else {
+      /** 第一版带外出处计数；`source_refs` 表缺失时退回不带计数的查询。 */
+      let rows = [];
+      let refCountable = true;
+      try {
+        rows = tx.all(
+          `SELECT m.id, m.content, m.summary, m.confidence, m.created_at,
+                  (SELECT COUNT(*) FROM source_refs r WHERE r.memory_id = m.id) AS ref_count
+             FROM memories m
+            WHERE m.scope_id = ? AND m.person_id = ? AND m.status = 'active'
+              AND m.source_type = 'observation'
+            ORDER BY m.confidence ASC, m.created_at ASC LIMIT 50`,
+          [scopeId, personId],
+        );
+      } catch {
+        refCountable = false;
+        try {
+          rows = tx.all(
+            `SELECT id, content, summary, confidence, created_at FROM memories
+              WHERE scope_id = ? AND person_id = ? AND status = 'active' AND source_type = 'observation'
+              ORDER BY confidence ASC, created_at ASC LIMIT 50`,
+            [scopeId, personId],
+          );
+        } catch {
+          rows = [];
+        }
+      }
+
+      /** @type {any[]} */
+      const eligible = [];
+      let confidentEnough = 0;
+      let seen = 0;
+      for (const row of rows) {
+        const confidence = Number(row.confidence);
+        const refMissing = refCountable && row.ref_count !== undefined && row.ref_count !== null && Number(row.ref_count) === 0;
+        if (!(confidence < VERIFICATION_MAX_CONFIDENCE || refMissing)) {
+          confidentEnough += 1;
+          continue;
+        }
+        const snippet = truncate(String(row.summary ?? '') || String(row.content ?? ''), 40) ?? '';
+        if (snippet.trim().length === 0) continue;
+        if (topicSeenWithin(`verification:${row.id}`, SHARED_MEMORY_TOPIC_COOLDOWN_DAYS)) {
+          seen += 1;
+          continue;
+        }
+        eligible.push({ row, snippet, confidence, refMissing });
+      }
+
+      if (eligible.length === 0) {
+        const reason = rows.length === 0
+          ? 'no_verification_evidence（没有 source_type=observation 的 active 记忆：没有「我自己看来的结论」需要核对）'
+          : confidentEnough > 0 && seen === 0
+            ? `no_verification_evidence（命中的 ${confidentEnough} 条置信度都 ≥ ${VERIFICATION_MAX_CONFIDENCE} 且都有出处，不必再问）`
+            : seen > 0 && confidentEnough === 0
+              ? `no_verification_evidence（命中的 ${seen} 条 ${SHARED_MEMORY_TOPIC_COOLDOWN_DAYS} 天内已经核对过）`
+              : `no_verification_evidence（${confidentEnough} 条置信度够高、${seen} 条刚核对过）`;
+        skipped.push({ source: 'verification', reason, detail: null });
+      } else if (sourceAskedToday('verification')) {
+        skipped.push({ source: 'verification', reason: 'already_asked_today（这一类每天最多开口 1 次）', detail: null });
+      } else {
+        for (const { row, snippet, confidence, refMissing } of eligible.slice(0, 1)) {
+          const why = refMissing
+            ? '却一条出处都翻不到'
+            : `置信度只有 ${(Number.isFinite(confidence) ? confidence : 0).toFixed(2)}`;
+          drafts.push({
+            source: 'verification',
+            topic: `verification:${row.id}`,
+            text: `这条我记的是「${snippet}」，${why}——现在还准吗？`,
+            evidence: [String(row.id)],
+            // 同 shared_memory：freshness 记的是「这条候选今天为什么出现」。
+            ageHours: 0,
+            scheduledFor: null,
+            expiresAt: null,
+          });
+        }
+      }
+    }
+
+    // ── 兜底：库内没有依据时，用「真实会话信号」与「未决记忆」补 ──────────
+    // 2026-10-31 凌晨加这一段的原因：care / commitment / discovery 三类在真实数据上
+    // 全部返回 `no_*_evidence`——不是没发生过，而是**没人把会话里的线索放进能查的地方**。
+    // 这里不编内容，只用三种真实坐标：
+    //   1) `session-signals.json`（扫真实会话得到的 care/commitment，带 session@时间戳）
+    //   2) `fox_events`（我自己的情绪事件，近 6 小时的 success / interesting）
+    //   3) 记忆里明确写着「当时没定下来」的事（curiosity 的依据）
+    const signalIndex = (() => {
+      try {
+        if (typeof options.signals === 'function') return options.signals()
+        return options.signalIndex ?? null
+      } catch {
+        return null
+      }
+    })()
+    const hasDraft = (source) => drafts.some((draft) => draft.source === source)
+    const clearSkip = (source) => {
+      const index = skipped.findIndex((item) => item.source === source)
+      if (index >= 0) skipped.splice(index, 1)
+    }
+
+    if (signalIndex) {
+      const extCare = Array.isArray(signalIndex.signals?.care) ? signalIndex.signals.care : []
+      // 当天说的话不问「后来怎么样了」：至少隔 8 小时，否则像复读机。
+      const careReady = extCare.filter((item) => Number(item.ageHours) >= 8)
+      if (!givenSources.has('unfinished_care') && !hasDraft('unfinished_care') && careReady.length > 0) {
+        for (const item of careReady.slice(0, 2)) {
+          drafts.push({
+            source: 'unfinished_care',
+            topic: `unfinished_care:${item.evidence?.[0] ?? 'session'}`,
+            text: `上次你提到「${truncate(String(item.text ?? ''), 40)}」，后来还顺利吗？`,
+            evidence: Array.isArray(item.evidence) ? item.evidence : [],
+            ageHours: Number(item.ageHours) || 0,
+            quality: item.quality === 'weak' ? 'weak' : 'strong',
+            scheduledFor: null,
+            expiresAt: null,
+          })
+        }
+        clearSkip('unfinished_care')
+      }
+
+      const extCommitment = Array.isArray(signalIndex.signals?.commitment) ? signalIndex.signals.commitment : []
+      if (!givenSources.has('commitment') && !hasDraft('commitment') && extCommitment.length > 0) {
+        for (const item of extCommitment.slice(0, 1)) {
+          drafts.push({
+            source: 'commitment',
+            topic: `commitment:${item.evidence?.[0] ?? 'session'}`,
+            text: `你之前交代的「${truncate(String(item.text ?? ''), 40)}」还搁着——要不要现在接着弄？`,
+            evidence: Array.isArray(item.evidence) ? item.evidence : [],
+            ageHours: Number(item.ageHours) || 0,
+            scheduledFor: null,
+            expiresAt: null,
+          })
+        }
+        clearSkip('commitment')
+      }
+    }
+
+    // care 兜底 2：长期没互动 → 日常问候（2026-10-31 主人确认「放宽」）。
+    // 依据是两条硬事实，不是关键词：互动间隔 ≥ 10 小时 + 关系四维达标。
+    // 不标 quality（null 不走 source_quality 硬闸）：它不靠弱关键词命中，
+    // 靠的是「时间 + 关系」这一对可验证事实。
+    // 与 schedule 互斥：schedule 管「今天还没说话」，这里管「隔了很久没说话」。
+    if (!givenSources.has('unfinished_care') && !hasDraft('unfinished_care') && !hasDraft('schedule')) {
+      let lastEvent = null
+      let rel = null
+      try {
+        lastEvent = tx.get(
+          `SELECT id, at_ms FROM relationship_events
+            WHERE scope_id = ? AND person_id = ? ORDER BY at_ms DESC LIMIT 1`,
+          [scopeId, personId],
+        )
+        rel = tx.get(
+          `SELECT familiarity, trust, intimacy, rapport FROM relationship_states
+            WHERE scope_id = ? AND person_id = ? LIMIT 1`,
+          [scopeId, personId],
+        )
+      } catch {
+        lastEvent = null
+        rel = null
+      }
+      const gapHours = lastEvent ? (ctx.nowMs - Number(lastEvent.at_ms)) / 3600_000 : null
+      const closeEnough = rel
+        ? Number(rel.familiarity) >= DAILY_CHECKIN_MIN_CLOSENESS
+          || Number(rel.intimacy) >= DAILY_CHECKIN_MIN_CLOSENESS
+        : false
+      if (gapHours !== null && gapHours >= DAILY_CHECKIN_MIN_GAP_HOURS && closeEnough) {
+        let evidenceRows = []
+        try {
+          evidenceRows = tx.all(
+            `SELECT id FROM relationship_events
+              WHERE scope_id = ? AND person_id = ? ORDER BY at_ms DESC LIMIT 3`,
+            [scopeId, personId],
+          )
+        } catch {
+          evidenceRows = []
+        }
+        drafts.push({
+          source: 'unfinished_care',
+          topic: `unfinished_care:daily_checkin:${ctx.lday}`,
+          text: dailyCheckinText(ctx.hour, Math.round(gapHours)),
+          evidence: evidenceRows.map((row) => String(row.id)),
+          ageHours: 0,
+          scheduledFor: null,
+          expiresAt: null,
+        })
+        clearSkip('unfinished_care')
+      }
+    }
+
+    // discovery 兜底：`ws_events(channel=result)` 生产库是 0 行，
+    // 但 `fox_events` 里有真实的「事情办成了 / 碰到有意思的东西」。
+    if (!givenSources.has('discovery') && !hasDraft('discovery')) {
+      let rows = []
+      try {
+        rows = tx.all(
+          `SELECT id, kind, note, at FROM fox_events
+            WHERE at > ? AND kind IN ('success', 'interesting')
+            ORDER BY at DESC LIMIT 5`,
+          [ctx.nowMs - 6 * 3600_000],
+        )
+      } catch {
+        rows = []
+      }
+      const usable = rows.filter((row) => typeof row.note === 'string' && row.note.trim().length > 0)
+      if (usable.length > 0) {
+        for (const row of usable.slice(0, 2)) {
+          drafts.push({
+            source: 'discovery',
+            topic: `discovery:fox:${row.id}`,
+            text: `刚碰上件${row.kind === 'success' ? '办成的事' : '有意思的事'}：${truncate(String(row.note), 40)}。`,
+            evidence: [String(row.id)],
+            ageHours: Math.max(0, (ctx.nowMs - Number(row.at)) / 3600_000),
+            scheduledFor: null,
+            expiresAt: null,
+          })
+        }
+        clearSkip('discovery')
+      }
+    }
+
+    // curiosity：记忆里明确「当时没定下来」的事（2026-10-31 新增的实现）。
+    // 依据是**正文里的未决标记**，不是实体名——拿实体名硬凑「我好奇 X」就是关键词冒充好奇。
+    // 标记必须窄：'计划' / '下一步' / '还没' 太泛，会命中事实陈述（实测把
+    // 「2026-10-28 以 explicit 模式接入生产」这种定论也当成了"没定下来"），所以只留
+    // **明确写着未完成**的那几个词。
+    if (!givenSources.has('curiosity') && !hasDraft('curiosity')) {
+      const PENDING_MARKERS = ['待定', '待确认', '待办', 'TODO', '暂缓', '回头再', '先不做', '还没定']
+      const likes = PENDING_MARKERS.map(() => 'content LIKE ? OR summary LIKE ?').join(' OR ')
+      const params = [scopeId, personId]
+      for (const marker of PENDING_MARKERS) params.push(`%${marker}%`, `%${marker}%`)
+      let rows = []
+      try {
+        rows = tx.all(
+          `SELECT id, content, summary FROM memories
+            WHERE scope_id = ? AND person_id = ? AND status = 'active'
+              AND type IN ('semantic', 'episode', 'skill')
+              AND (${likes})
+            ORDER BY importance DESC, created_at DESC LIMIT 8`,
+          params,
+        )
+      } catch {
+        rows = []
+      }
+      const usable = rows.filter((row) => {
+        const text = String(row.summary || row.content || '')
+        return text.length >= 8 && !isResolvedCareText(text)
+      })
+      if (usable.length > 0) {
+        for (const row of usable.slice(0, 1)) {
+          drafts.push({
+            source: 'curiosity',
+            topic: `curiosity:${row.id}`,
+            text: `上次有件事没定下来：「${truncate(String(row.summary || row.content || ''), 40)}」——后来想好了吗？`,
+            evidence: [String(row.id)],
+            ageHours: 0,
+            scheduledFor: null,
+            expiresAt: null,
+          })
+        }
+        clearSkip('curiosity')
+      } else {
+        skipped.push({ source: 'curiosity', reason: 'no_pending_marker（记忆里没有明确「未决」的事）' })
+      }
+    }
+
     return { drafts, skipped };
   }
 
@@ -902,7 +1468,11 @@ export function createSocial(options) {
       blocked: canPersist ? null : (gate.denied ?? 'persist_disabled'),
       candidates,
       skipped: collected.skipped,
-      pendingSources: PENDING_SOCIAL_SOURCES,
+      // 这里必须报**真实**的实现状态：`PENDING_SOCIAL_SOURCES` 是静态快照，
+      // 代码补齐之后它还报「三类没做」，页面就跟着说错话。
+      pendingSources: SOCIAL_SOURCES_PENDING,
+      implementedSources: SOCIAL_SOURCES_IMPLEMENTED,
+      sourceStates: SOCIAL_SOURCE_STATE,
     };
   }
 
@@ -1078,35 +1648,68 @@ export function createSocial(options) {
     try {
       const result = await channelHook({ channel, text: candidate.text, candidate, personId: candidate.personId });
       if (!result || result.ok === false) {
-        const record = await recordSend({
+        // 通道明确失败：记录失败不影响这个结论，但不能因为写库抛错就把异常抛给上层
+        let failedRecord = null;
+        try {
+          failedRecord = await recordSend({
+            candidate,
+            mode: 'approved',
+            channel,
+            ok: false,
+            nowMs,
+            error: String(result?.error ?? 'channel_rejected'),
+            receipt: { note: '通道返回失败' },
+          });
+        } catch {
+          failedRecord = null;
+        }
+        return {
+          sent: false,
+          ok: false,
+          queued: false,
+          recorded: failedRecord !== null,
+          deliveryMode: 'approved',
+          sendId: failedRecord ? failedRecord.sendId : null,
+          reason: 'channel_rejected',
+        };
+      }
+      // ── 从这里往下：通道**已经成功发出去了** ──────────────────────
+      // 所以写记录失败（例如 CHECK 约束）绝不能再被当成「没发出去」。
+      // 实测踩过：channel='qq' 违反 social_sends 的 CHECK(channel IN ('console','im','other'))，
+      // recordSend 抛 constraint failed → 冒泡到下面的 catch → 接口回「没发出去」，
+      // 而主人手机里已经收到了那条消息。**数据说谎比报错更糟。**
+      let record = null;
+      let recordError = null;
+      try {
+        record = await recordSend({
           candidate,
           mode: 'approved',
           channel,
-          ok: false,
+          ok: true,
           nowMs,
-          error: String(result?.error ?? 'channel_rejected'),
-          receipt: { note: '通道返回失败' },
+          externalId: result.externalId === undefined || result.externalId === null ? null : String(result.externalId),
+          receipt: { hook: 'external', channel, externalId: result.externalId ?? null },
         });
-        return { sent: false, ok: false, queued: false, recorded: true, deliveryMode: 'approved', sendId: record.sendId, reason: 'channel_rejected' };
+      } catch (recordFailure) {
+        recordError = recordFailure instanceof Error ? recordFailure.message : String(recordFailure);
+        alert({
+          kind: 'persona.social_send_record_failed',
+          message: `消息已发出，但发送记录没写成功：${recordError}`,
+          detail: { candidateId: id, channel },
+        });
       }
-      const record = await recordSend({
-        candidate,
-        mode: 'approved',
-        channel,
-        ok: true,
-        nowMs,
-        externalId: result.externalId === undefined || result.externalId === null ? null : String(result.externalId),
-        receipt: { hook: 'external', channel },
-      });
       return {
         sent: true,
         ok: true,
         queued: true,
-        recorded: true,
+        // recorded 如实反映「有没有留痕」，与 sent 分开——
+        // 页面要能同时表达「已经发出去了」和「这次没记账」。
+        recorded: record !== null,
+        recordError,
         deliveryMode: 'approved',
-        sendId: record.sendId,
-        externalId: record.externalId,
-        reason: 'sent',
+        sendId: record ? record.sendId : null,
+        externalId: record ? record.externalId : (result.externalId ?? null),
+        reason: recordError === null ? 'sent' : 'sent_but_record_failed',
       };
     } catch (err) {
       alert({
@@ -1342,8 +1945,9 @@ export function createSocial(options) {
         text: String(row.text),
       })),
       skipped: collected.skipped,
-      pendingSources: PENDING_SOCIAL_SOURCES,
-      implementedSources: IMPLEMENTED_SOCIAL_SOURCES,
+      pendingSources: SOCIAL_SOURCES_PENDING,
+      implementedSources: SOCIAL_SOURCES_IMPLEMENTED,
+      sourceStates: SOCIAL_SOURCE_STATE,
       note: 'dry-run 只读预演：没有写任何业务行，也没有真的发出去。',
     };
   }
@@ -1399,6 +2003,16 @@ export function createSocial(options) {
     MIN_MOOD,
     SCORE_THRESHOLD,
     DEFAULT_EXPIRY_HOURS,
+    SHARED_MEMORY_MIN_AGE_DAYS,
+    SHARED_MEMORY_MIN_IMPORTANCE,
+    SHARED_MEMORY_TOPIC_COOLDOWN_DAYS,
+    MEMORY_EVENT_TIME_SQL,
+    VERIFICATION_MAX_CONFIDENCE,
+    SOCIAL_SOURCE_STATE,
+    SOCIAL_SOURCES_IMPLEMENTED,
+    SOCIAL_SOURCES_PENDING,
+    // 下面两个是 `util.js` 的历史静态快照，仅为兼容老调用方保留；
+    // 判断「做了没有」一律用 `SOCIAL_SOURCE_STATE`。
     IMPLEMENTED_SOCIAL_SOURCES,
     PENDING_SOCIAL_SOURCES,
   };

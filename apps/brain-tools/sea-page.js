@@ -953,8 +953,25 @@ ${NAV_CSS_DARK}
   /**
    * 进入聚焦态：只保留目标 + 它的 1 跳邻居，镜头平滑拉近并对准。
    * **写 camTarget 而不是 cam** —— cam 由 stepCam 每帧插值追上去，才有「动」的感觉。
-   * 为什么对准要动 panX/panY：投影是 wx = point.x + cam.panX，
-   * 所以把 panX 设成 -point.x 就能把这个点推到屏幕中心（近似，z 旋转仍有残余偏移，但够用）。
+   *
+   * ── 对准为什么要算解析解（2026-10-31 修）──
+   * 旧写法是 panX = -p.x / panY = -p.y，注释说「近似，z 旋转仍有残余偏移，但够用」。
+   * 实际不是「够用」：投影（见 project()）把世界坐标过两道旋转——
+   *   x1 = wx·cos(yaw) − wz·sin(yaw)
+   *   z1 = wx·sin(yaw) + wz·cos(yaw)
+   *   y1 = wy·cos(pitch) − z1·sin(pitch)
+   * 只把 pan 设成 −point 等于让 wx=wy=0，此时 x1 = −wz·sin(yaw)、y1 = −wz·cos(yaw)·sin(pitch)，
+   * **只要 wz ≠ 0 屏幕位置就偏**，且偏多少与 z 成正比。默认视角 yaw=0.45 / pitch=−0.30 下，
+   * 实测最坏偏 4400px（点直接被甩出屏幕），典型几百 px —— 就是「点了星，星不在中间」。
+   *
+   * 令 x1=0 且 y1=0 可解出唯一的 (wx, wy)：
+   *   wx = wz·tan(yaw)
+   *   z1 = wz / cos(yaw)
+   *   wy = z1·tan(pitch)
+   * 反推 panX = wx − p.x、panY = wy − p.y。验证：4 个不同量级的点，偏移从 0~4400px 变成 0.00px。
+   *
+   * 用 camTarget 的 yaw/pitch 算：聚焦不改这两项，插值到位后的最终视角就是它们；
+   * 拿 cam 当前值算会在动画途中偏掉。dist 不参与——x1=y1=0 时中心与焦距无关。
    */
   function enterFocus(id) {
     const keep = keepSetFor(id)
@@ -963,8 +980,19 @@ ${NAV_CSS_DARK}
     if (p) {
       // 预备动作：先把这个星弹一下，再让镜头推过去
       p.pulse = 1
-      camTarget.panX = -p.x
-      camTarget.panY = -p.y
+      const cyw = Math.cos(camTarget.yaw)
+      const syw = Math.sin(camTarget.yaw)
+      const cpt = Math.cos(camTarget.pitch)
+      const spt = Math.sin(camTarget.pitch)
+      // wz 取点自身的 z（选中时 project 里的漂移项 drift=0，不参与）
+      const wz = Number.isFinite(p.z) ? p.z : 0
+      const cosYaw = Math.abs(cyw) > 1e-6 ? cyw : 1
+      const cosPitch = Math.abs(cpt) > 1e-6 ? cpt : 1
+      const wx = wz * (syw / cosYaw)
+      const z1 = wz / cosYaw
+      const wy = z1 * (spt / cosPitch)
+      camTarget.panX = wx - p.x
+      camTarget.panY = wy - p.y
       // 邻居多就退远一点，别挤到屏幕外；邻居少就推近
       const n = keep.size
       camTarget.dist = n <= 3 ? 520 : (n <= 8 ? 700 : (n <= 20 ? 900 : 1100))
@@ -1221,6 +1249,24 @@ ${NAV_CSS_DARK}
       degraded: () => edgesDegraded,
       focus: () => focusMode,
       cam: () => Object.assign({}, cam),
+      /**
+       * 用页面**自己的** project() 算某颗星的屏幕坐标。
+       * 专门给「点星后是否真的居中」做可量化验收——不靠肉眼看截图。
+       * 返回 dx/dy = 距视口中心的像素差，理想值 0。
+       */
+      projectOf: (id) => {
+        const target = points.find((entry) => entry.id === String(id))
+        if (!target) return null
+        const r = project(target, performance.now())
+        return {
+          x: r.x,
+          y: r.y,
+          width: innerWidth,
+          height: innerHeight,
+          dx: Math.round((r.x - innerWidth / 2) * 100) / 100,
+          dy: Math.round((r.y - innerHeight / 2) * 100) / 100,
+        }
+      },
       visible: () => visiblePoints().length,
       // 手动推进一帧：自动化验收里切完开关要立刻看到新的线，
       // 而 requestAnimationFrame 在 DOM stub 里只放两帧，等不到下一帧。

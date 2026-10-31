@@ -12,12 +12,18 @@ DSH 的外置大脑：把记忆落到本地 SQLite，让模型在十万字历史
 - **中文检索真能用**：char-space 主路 + trigram 补充 + RRF 融合，hit@10 100%（默认分词只有 50%）
 - **实体与关系**：按实体查「关于 X 定过什么」，矛盾并列保留、不替你选边
 - **可治理**：独立删除账本、全量备份、隔离恢复（恢复演练 24/24）
-- **看得见**：五个本地页面——列表、心海（3D 记忆海）、使用情况、矛盾核验、实体
+- **看得见**：11 个本地页面——列表 `/dsh-brain`、心海（3D 记忆海）`/dsh-brain/sea`、使用情况 `/dsh-brain/usage`、
+  矛盾核验 `/dsh-brain/conflicts`、实体 `/dsh-brain/entities`、心情 `/dsh-brain/mood`、工作区 `/dsh-brain/workspace`、
+  认知 `/dsh-brain/cognition`、人格 `/dsh-brain/persona`、指令 `/dsh-brain/directives`、
+  治理 `/dsh-brain/governance`（同源代理 7420 面板）
+
+**当前数据**（2026-10-30 只读实测）：226 条记忆（218 active / 7 superseded / 1 deleted）、225 条来源引用、
+117 个实体 / 197 条记忆↔实体关联、`contradicts` 矛盾边 0 条（6 条矛盾在合并时已清完）。
 
 ## 跑起来
 
 ```powershell
-node --test "tests/**/*.test.mjs"   # 全量 576 项
+node --test "tests/**/*.test.mjs"   # 全量 989 项（2026-10-30 实测 989 pass / 0 fail）
 node apps/brain-tools/smoke.mjs     # 工具冒烟 25 项（临时库，不碰生产）
 node tools/run-eval.mjs             # 检索质量评测 120 例
 ```

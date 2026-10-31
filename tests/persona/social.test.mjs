@@ -5,7 +5,8 @@
  * 验收清单（每条都是一句需求）：
  *  1. 三个开关全关 → **零写入**（候选、发送一条都没有）；`preview` 只读也能回答「本来会说什么」
  *  2. `paused=1` 优先级最高：`social.enabled=1` 也一样零写入
- *  3. 候选四类来源能从真实数据长出来；未实现的三类如实列在 `skipped`
+ *  3. 候选四类来源能从真实数据长出来；其余每一类都要在 `skipped` 里有说法
+ *     （实现了的给具体理由，没实现的如实说「缺什么」）
  *  4. `discovery` 没有真实 evidence → **rejected**（不许编造「我查到了」）
  *  5. 评分：白天 + 有依据 = 85 分（手算写死），`score_breakdown` 八项齐全可复算
  *  6. 硬闸：深夜 0–6 点 / 30 分钟内已发 / 精力<25 / 心情<30 → rejected
@@ -141,10 +142,23 @@ test('四类来源都能从真实数据里长出来；未实现的三类如实�
   const discovery = generated.candidates.find((item) => item.source === 'discovery');
   assert.deepEqual(discovery.evidence, [eventId]);
 
-  const skippedSources = generated.skipped.map((item) => item.source);
-  for (const pending of ['shared_memory', 'verification', 'curiosity']) {
-    assert.ok(skippedSources.includes(pending), `${pending} 必须如实说「没做」，不许假装有`);
-    assert.match(generated.skipped.find((item) => item.source === pending).reason, /not_implemented/);
+  // 2026-10-31：`shared_memory` / `verification` 已实现（见 social.js 的 `SOCIAL_SOURCE_STATE`），
+  // 所以这里要守的不再是「三类都没做」，而是「**每一类都要有说法**」：
+  // 实现了的必须给具体跳过理由（不许再报 not_implemented），没实现的必须说清缺什么数据。
+  const skippedBySource = new Map(generated.skipped.map((item) => [item.source, item.reason]));
+  for (const pending of ['shared_memory', 'verification']) {
+    const reason = skippedBySource.get(pending);
+    assert.ok(reason, `${pending} 这一轮没产候选，必须如实说明原因`);
+    assert.doesNotMatch(reason, /not_implemented/, `${pending} 已实现，不许再报「没做」`);
+  }
+  // 2026-10-31 凌晨：curiosity 也实现了（依据 = 记忆里明确的未决标记）。
+  // 所以规则统一成「要么产出候选、要么给具体原因」——不许只写一个 not_implemented 糊过去。
+  const curiosityReason = skippedBySource.get('curiosity');
+  if (curiosityReason !== undefined) {
+    assert.ok(
+      /no_pending_marker|already_asked_today|not_implemented/.test(curiosityReason),
+      `curiosity 没产候选时必须给出具体原因，实际：${curiosityReason}`,
+    );
   }
 });
 

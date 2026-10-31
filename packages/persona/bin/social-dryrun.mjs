@@ -271,7 +271,15 @@ async function main() {
       lines.push('');
     }
     lines.push(`本轮实现的来源：${preview.implementedSources.join(' / ')}`);
-    lines.push(`刻意没做的来源：${preview.pendingSources.join(' / ')}（没有可靠依据，硬做就是编造）`);
+    // 语气对齐 2026-10-31 的现状：剩下的来源不是「不想做」，而是**缺数据**——
+    // 具体缺什么在 `sourceStates.<source>.missing` 里，别用「没依据所以不做」一句带过。
+    const pendingDetail = (preview.pendingSources ?? [])
+      .map((source) => {
+        const missing = preview.sourceStates?.[source]?.missing;
+        return missing ? `${source}（缺：${missing}）` : source;
+      })
+      .join(' / ');
+    lines.push(`还缺数据、暂时不产出的来源：${pendingDetail || '（无）'}`);
     lines.push('');
     lines.push(preview.note);
 

@@ -116,6 +116,27 @@ export function rowToVersion(row) {
  * @param {Record<string, any>} row
  * @returns {any}
  */
+/**
+ * 解析冲突里存的旧值/新值。
+ *
+ * 库里 `old_value` / `new_value` 是 TEXT，装的是 JSON 文本（`null`、`["a","b"]`、`"字符串"`）。
+ * 返回 `undefined` 表示「那时这个字段还不存在」——回退时要把它删掉，而不是写成 null。
+ * 解析不了就按普通字符串返回（旧数据里可能有裸文本）。
+ *
+ * @param {string|null|undefined} raw
+ * @returns {any} 解析后的值；`undefined` 表示该字段当时不存在
+ */
+export function parseConflictValue(raw) {
+  if (raw === null || raw === undefined) return undefined;
+  const text = String(raw);
+  if (text === '' || text === 'null') return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
 export function rowToConflict(row) {
   return {
     id: String(row.id),
@@ -850,13 +871,27 @@ export function createPersonaVersions(options) {
 
   /**
    * 人工裁决一条冲突。**人是唯一能改这些的地方**。
+   *
+   * 2026-10-31 改：裁决**真的生效**了。之前这里只 `UPDATE` 一行状态，
+   * 点「保留旧的」人格一个字都不变——页面上有按钮、库里也有记录，但什么都没发生，
+   * 那是假动作，比没有按钮更糟。
+   *
+   * 现在的语义：
+   * - `keep_old`：把当前 active 版本里那个冲突字段**回退成旧值**，建新版本并激活；
+   *   旧值是 JSON `null` 表示「那时这个字段还不存在」，回退即删掉它。
+   * - `keep_new`：新值本来就在当前 active 版本里，标记即可（不重复造版本）。
+   * - `merged`：需要人给合并后的内容，这里**不替他编**，只标记。
+   * - `deferred`：只标记。
+   *
    * @param {{ conflictId: string, resolution: string, by?: string }} input
    */
   async function resolveConflict(input = /** @type {any} */ ({})) {
     const conflictId = requireString(input.conflictId, 'conflictId');
     const resolution = requireEnum(input.resolution, CONFLICT_RESOLUTIONS.filter((value) => value !== 'unresolved'), 'resolution');
     const by = requireString(input.by, 'by');
-    return queue.write(
+
+    // 第一步：标记（独立事务）。写锁只覆盖这一次 UPDATE，不把建版本也套进来。
+    const marked = await queue.write(
       (txh) => {
         const row = txh.get(
           'SELECT * FROM persona_conflicts WHERE id = ? AND profile_id IN (SELECT id FROM persona_profiles WHERE scope_id = ?)',
@@ -870,10 +905,54 @@ export function createPersonaVersions(options) {
           by,
           conflictId,
         ]);
-        return { conflictId, resolution, by };
+        return {
+          conflictId,
+          resolution,
+          by,
+          profileId: String(row.profile_id),
+          layer: String(row.layer),
+          field: String(row.field),
+          oldValue: row.old_value === null ? null : String(row.old_value),
+        };
       },
       { label: 'persona.conflicts.resolve' },
     );
+
+    // 第二步：让裁决落到版本上。只有 keep_old 需要改层——
+    // keep_new 时新值已经是 active 版本的状态，再建一版等于造个空版本。
+    if (resolution !== 'keep_old') return marked;
+
+    const active = getActive({ profileId: marked.profileId });
+    if (active === null) return { ...marked, applied: null, applyError: 'no_active_version' };
+
+    const nextLayers = { ...active.layers };
+    // 冲突表里存的是**下划线写法**（`user_override`），layers 对象里是**驼峰**（`userOverride`）——
+    // 这就是 `LAYER_TO_CONFLICT` 存在的理由。直接拿冲突表的 layer 去写层会撞
+    // 「layers 含未知层」的校验（实测踩过：这个分支以前从没被执行过，所以一直没暴露）。
+    const layerKey = Object.keys(LAYER_TO_CONFLICT).find((key) => LAYER_TO_CONFLICT[key] === marked.layer) ?? marked.layer;
+    const currentBody = nextLayers[layerKey] && typeof nextLayers[layerKey] === 'object'
+      ? { ...nextLayers[layerKey] }
+      : {};
+    const restored = parseConflictValue(marked.oldValue);
+    if (restored === undefined) {
+      delete currentBody[marked.field];
+    } else {
+      currentBody[marked.field] = restored;
+    }
+    nextLayers[layerKey] = currentBody;
+
+    const created = await createVersion({
+      profileId: marked.profileId,
+      layers: nextLayers,
+      changeReason: `conflict:keep_old（回退 ${layerKey}.${marked.field}）`,
+      parentVersion: Number(active.version),
+      createdBy: by,
+    });
+    await activate(created.id, { by, reason: 'conflict:keep_old' });
+    return {
+      ...marked,
+      applied: { version: created.version, layer: layerKey, field: marked.field, value: restored === undefined ? null : restored },
+    };
   }
 
   /**
