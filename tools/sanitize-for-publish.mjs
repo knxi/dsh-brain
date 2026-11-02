@@ -34,9 +34,11 @@ const ROOT = path.resolve(HERE, '..')
  * 代码里的绝对路径是**运行时路径**，不是文档痕迹。
  *   - `apps/brain-tools/cordis.patch.yml` 的 `storePath: 'E:/ds-h/dsh-brain/data/brain.db'`
  *     → 换成 `<repo>` 会让插件直接找不到库；
- *   - `apps/probe/*.mjs` 里 `C:/Users/su/.dsh/profiles/web` 是探针要读的真实 profile 路径；
+ *   - `apps/probe/*.mjs` 里探针要读真实的 profile 路径（已改成 `homedir()` 动态解析，
+ *     本机行为不变、别人 clone 也能跑、文件里不留用户名）；
  *   - 测试脚本的默认库路径同理。
- * 把它们"脱敏"等于把能跑的项目改成不能跑的项目。
+ * 把它们"脱敏"成占位符等于把能跑的项目改成不能跑的项目——
+ * 所以代码里不写死绝对路径，用 `homedir()` / `process.env` 兜底。
  *
  * 文档里写本机路径是「记录」，代码里写是本「依赖」——两者处理方式不一样。
  */

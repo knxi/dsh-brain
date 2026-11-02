@@ -173,6 +173,56 @@ function renderHit(hit) {
   }
 }
 
+/**
+ * 反思候选的权限判据（纯函数，可单测）。
+ *
+ * 能力挂在 `autonomy.max_level` 上，跟项目里别的自主行为用同一把尺子：
+ *
+ *   L0  只能看（list）
+ *   L1  只能否置信度 ≤0.45 的（KIND_CONFIDENCE 里只有 knowledge_gap 落这一档）
+ *   L2  能否决任意候选；能主动跑一次反思（还要 reflection.enabled=1）
+ *   L3  能晋升（把反思写成一条长期记忆）
+ *
+ * 为什么分这么细：丢弃是**终态**（之后不能再晋升），而晋升会往记忆库写长期记忆。
+ * 这两件事的风险不一样，不该共用一个门槛。
+ *
+ * 等级读不到、或读到 `'L9'` 这种没见过的值 → 按 L0（失败关）。
+ * 这跟 directives/scheduler 对 max_level 的判据一致：解析不出来就当没权限。
+ *
+ * @param {{ level?: unknown, action?: unknown, confidence?: unknown }} input
+ * @returns {{ allowed: boolean, level: 'L0'|'L1'|'L2'|'L3', lv: number, reason: string }}
+ */
+export function resolveReflectionPermission(input) {
+  const LEVELS = ['L0', 'L1', 'L2', 'L3']
+  const raw = input && input.level != null ? String(input.level) : ''
+  const level = LEVELS.indexOf(raw) >= 0 ? raw : 'L0'
+  const lv = LEVELS.indexOf(level)
+  const action = String((input && input.action) || 'list').trim().toLowerCase()
+  if (action === 'list') return { allowed: true, level, lv, reason: 'ok' }
+  if (action === 'run') {
+    return lv >= 2
+      ? { allowed: true, level, lv, reason: 'ok' }
+      : { allowed: false, level, lv, reason: 'level_too_low' }
+  }
+  if (action === 'promote') {
+    return lv >= 3
+      ? { allowed: true, level, lv, reason: 'ok' }
+      : { allowed: false, level, lv, reason: 'level_too_low' }
+  }
+  if (action === 'dismiss') {
+    if (lv < 1) return { allowed: false, level, lv, reason: 'level_too_low' }
+    if (lv < 2) {
+      const conf = input && input.confidence != null ? Number(input.confidence) : null
+      const weak = conf != null && Number.isFinite(conf) && conf <= 0.45
+      return weak
+        ? { allowed: true, level, lv, reason: 'ok_weak_only' }
+        : { allowed: false, level, lv, reason: 'level_too_low_for_confidence' }
+    }
+    return { allowed: true, level, lv, reason: 'ok' }
+  }
+  return { allowed: false, level, lv, reason: 'unknown_action' }
+}
+
 export function apply(ctx, config) {
   const storePath = (config && config.storePath) || DEFAULT_STORE
   const migrationsDir = (config && config.migrationsDir) || DEFAULT_MIGRATIONS
@@ -978,6 +1028,52 @@ export function apply(ctx, config) {
     if (!autoCfg.enabled) return { delivered: 0, reason: 'disabled' }
     const social = brain && brain.persona && brain.persona.social
     if (!social || typeof social.send !== 'function') return { delivered: 0, reason: 'no_social_facade' }
+
+    // ── 熔断（2026-11-02 加）────────────────────────────────────
+    // 问题：通道挂掉时同一候选会被反复重试——实测 sol_e3ea… 在 22:04 / 22:22 / 22:25
+    // 连试三次，每次都写一条失败记录，outbox 跟着涨，面板上就是一串「没发出去」。
+    //
+    // 两层止损：
+    //   ① 全局熔断：最近 3 次 approved 投递**全失败** → 本轮不投。
+    //   ② 单候选上限：同一候选失败 ≥3 次 → 不再选它（在下面的查询里过滤）。
+    //
+    // **必须带半开**：熔断只看历史，换通道（微信→QQ）后历史里那串失败还在，
+    // 不加半开就会死锁——新通道明明通的，却永远被旧失败拦着。
+    // 所以熔断期间每 30 分钟放**一次**试探；试成功自然恢复（最近 3 次里出现 ok=1），
+    // 试失败继续熔断。熔断期间不写记录——失败已经是事实，重复写只是噪音。
+    const CIRCUIT_FAILS = 3
+    const HALF_OPEN_MS = 30 * 60 * 1000
+    try {
+      const recent = brain.db.prepare(
+        `SELECT ok FROM social_sends
+          WHERE channel = 'im' AND delivery_mode = 'approved'
+          ORDER BY rowid DESC LIMIT ${CIRCUIT_FAILS}`,
+      ).all()
+      const allFailed = recent.length >= CIRCUIT_FAILS && recent.every((r) => Number(r.ok) === 0)
+      if (allFailed) {
+        const last = brain.db.prepare(
+          `SELECT at_ms FROM social_sends
+            WHERE channel = 'im' AND delivery_mode = 'approved'
+            ORDER BY rowid DESC LIMIT 1`,
+        ).get()
+        const lastMs = Number(last && last.at_ms ? last.at_ms : 0)
+        // 通道配置在「最后一次失败」之后被改过 → 说明换了通道，旧熔断作废。
+        // 场景：微信 target 假 active 连挂三次，换成 QQ 后历史里那串失败还在，
+        // 不认这一条的话新通道明明通的也会被一直拦着。
+        let cfgChangedAfterFail = false
+        try {
+          const cfgMs = Number(statSync(channelConfigPath).mtimeMs)
+          cfgChangedAfterFail = cfgMs > lastMs
+        } catch { /* 配置读不到就当没换过 */ }
+        if (!cfgChangedAfterFail) {
+          const idleMs = lastMs > 0 ? Date.now() - lastMs : HALF_OPEN_MS
+          if (idleMs < HALF_OPEN_MS) {
+            return { delivered: 0, reason: 'circuit_open' }
+          }
+        }
+        // 换了通道，或已过半开窗口：放一次试探。走到这里说明本轮会真的投一次。
+      }
+    } catch { /* 统计查不到就不熔断——别让熔断逻辑自己把通道拦死 */ }
     const nowIso = new Date().toISOString()
     let rows = []
     try {
@@ -994,6 +1090,13 @@ export function apply(ctx, config) {
               SELECT 1 FROM social_sends s
                WHERE s.candidate_id = c.id AND s.channel = 'console' AND s.ok = 1
             )
+            -- 单候选失败上限（2026-11-02 加）：同一条候选 im 失败 ≥3 次就不再选它。
+            -- 全局熔断管「整条通道挂了」，这一条管「这条候选本身有问题」（比如内容被拒）。
+            -- 不设这个的话，一条永远发不出去的候选会一直占着队头。
+            AND (
+              SELECT COUNT(*) FROM social_sends s2
+               WHERE s2.candidate_id = c.id AND s2.channel = 'im' AND s2.ok = 0
+            ) < 3
           ORDER BY c.score DESC, c.created_at ASC
           LIMIT 3`,
       ).all(scopeId, personId, nowIso)
@@ -1195,6 +1298,62 @@ export function apply(ctx, config) {
       console.error('[brain-tools] 体检失败（已忽略）:', error instanceof Error ? error.message : String(error))
     }
   }
+  /**
+   * 反思候选的自动晋升（2026-11-02，主人授权；同日收窄为「只升矛盾」）。
+   *
+   * 为什么不是「一锅全升」：四类反思的价值差得很远，混着升会把记忆库灌成噪声场。
+   *
+   * | kind          | 置信度 | 升不升 | 理由 |
+   * |---------------|--------|--------|------|
+   * | contradiction | 0.85   | 升     | 两条记忆打架，记下来能防以后用错那一条 |
+   * | pattern       | 0.6    | 不升   | 实测产出是「「事实」类记忆 3 天出现 178 次」这种统计自指——升进去等于往库里加一条「库里有很多记忆」的记忆，还要被检索、占上下文。留给人看，不入库 |
+   * | commitment    | 0.5    | 不升   | 未兑现的承诺是「要做的事」，不是「知道的事」，写进记忆是错位 |
+   * | knowledge_gap | 0.45   | 不升   | 只是「这块没记录」的提示，没有可保留的内容 |
+   *
+   * 另外三道闸：
+   *   1. **每轮最多 3 条**——一次雪崩式写入比不写更糟；
+   *   2. **全局暂停 / 等级 <L3 一律不升**（晋升就是 L3 的能力，自动跑也得守同一把尺子）；
+   *   3. **`reflection.auto_promote` 开关**（默认 '1'）：出问题一句 SQL 或面板上一点就停，不用改代码。
+   *
+   * 幂等由 reflect.promote 自己保证（同来源同签名不重复写），这里只跳过 promoted===false 的返回。
+   */
+  const AUTO_PROMOTE_KINDS = Object.freeze(['contradiction'])
+  const AUTO_PROMOTE_MAX_PER_ROUND = 3
+
+  const autoPromoteReflections = async (brain, reflect) => {
+    try {
+      const ws = brain.workspace
+      if (!ws || typeof reflect.promote !== 'function') return
+      if (typeof ws.isEnabled !== 'function' || ws.isEnabled('reflection.auto_promote') !== true) return
+      if (typeof ws.isPaused === 'function' && ws.isPaused()) return
+      const LEVELS = ['L0', 'L1', 'L2', 'L3']
+      const rawLevel = typeof ws.getSwitch === 'function' ? ws.getSwitch('autonomy.max_level') : null
+      if (LEVELS.indexOf(String(rawLevel)) < 3) return // 等级不够就当没这回事（失败关）
+
+      const listed = reflect.list({ scopeId, status: 'candidate', limit: 50 })
+      const candidates = (listed && listed.items) || []
+      let done = 0
+      for (const item of candidates) {
+        if (done >= AUTO_PROMOTE_MAX_PER_ROUND) break
+        if (!item || !AUTO_PROMOTE_KINDS.includes(String(item.kind))) continue
+        try {
+          const out = await reflect.promote(item.id, { scopeId })
+          if (!out || out.promoted === false) continue
+          done += 1
+          console.error('[brain-tools] 自动晋升反思 ' + item.id
+            + '（' + item.kind + '，置信 ' + item.confidence + '）→ 记忆 ' + (out && out.memoryId))
+        } catch (error) {
+          // 单条失败不拖垮整轮：可能是「已否决的不能晋升」「已晋升的幂等返回」这类正常拒绝
+          console.error('[brain-tools] 自动晋升跳过 ' + item.id + '：'
+            + (error instanceof Error ? error.message : String(error)))
+        }
+      }
+    } catch (error) {
+      console.error('[brain-tools] 自动晋升整体失败（已忽略）:',
+        error instanceof Error ? error.message : String(error))
+    }
+  }
+
   const runReflection = async () => {
     try {
       const brain = await getBrain()
@@ -1207,9 +1366,11 @@ export function apply(ctx, config) {
       // 闸门关着时 runOnce 返回 {skipped:true}，那是正常状态，不吭声。
       if (!out || out.skipped === true) return
       const produced = Number.isFinite(Number(out.produced)) ? Number(out.produced) : 0
-      if (produced > 0) {
-        console.error(`[brain-tools] 反思：产生候选 ${produced} 条（等人批，不自动进记忆）`)
-      }
+      if (produced > 0) console.error(`[brain-tools] 反思：产生候选 ${produced} 条`)
+      // 不管这轮产出多少都跑一次自动晋升：否则「这轮没出新候选」的那些轮次里，
+      // 之前积压的候选会永远躺在表里没人碰（现在就有 25 条积压）。
+      // 闸门、分类与配额见 autoPromoteReflections。
+      await autoPromoteReflections(brain, reflect)
     } catch (error) {
       console.error('[brain-tools] 反思失败（已忽略）:', error instanceof Error ? error.message : String(error))
     }
@@ -1232,7 +1393,8 @@ export function apply(ctx, config) {
           clearInterval(reflectTimer)
         }
       })
-      console.error('[brain-tools] 类脑驱动器已挂载（体检 30 分钟 / 反思 6 小时；只出告警与候选，不自动改记忆）')
+      console.error('[brain-tools] 类脑驱动器已挂载（体检 30 分钟 / 反思 6 小时；反思只出候选，'
+        + '晋升由 reflection.auto_promote 开关控制、只升 contradiction）')
     } catch (error) {
       console.error('[brain-tools] 类脑驱动器挂载失败（已忽略）:', error instanceof Error ? error.message : String(error))
     }
@@ -2396,6 +2558,238 @@ export function apply(ctx, config) {
           code: usageOutcome.code,
           hitCount: usageOutcome.ok ? 1 : 0,
           hitIds: usageOutcome.memoryId ? [usageOutcome.memoryId] : [],
+          status: usageOutcome.ok ? 'ok' : 'error',
+        })
+      }
+    },
+  }))
+
+  // ── 反思候选：读 + 分级处理（2026-11-02）────────────────────
+  //
+  // 为什么要有这个工具：反思候选（reflections.status='candidate'）以前只有控制台能处理。
+  // 我在对话里能看到「有 25 条待处理」，却一条也动不了——要么主人去点，要么就堆着。
+  //
+  // 为什么不是无条件放开：反思是**机器从记忆里捞出来的推断**，而丢弃是终态
+  // （之后不能再晋升）。生成和处理都在同一个智能体手里，这一环就没有第二个把门的了。
+  // 所以能力挂在 `autonomy.max_level` 上，跟项目里别的自主行为用同一把尺子：
+  //
+  //   L0  只能看（list）
+  //   L1  只能否置信度 ≤0.45 的（按 KIND_CONFIDENCE，只有 knowledge_gap 落这一档）
+  //   L2  能否决任意候选
+  //   L3  能晋升（把反思写成一条长期记忆）
+  //
+  // 「主动跑一次反思」（action=run）比处理已有候选更重——它会往库里新增候选，
+  // 所以额外要求 reflection.enabled=1 且 ≥L2。
+  // 开关是主人的逃生门：我不替主人打开它，只能如实报告「关着，跑不了」。
+  //
+  // 等级读不到、或读到无法识别的字符串 → 按 L0（失败关）。跟 directives/scheduler 同一条判据。
+  tools.register(defineTool({
+    name: 'brain_reflection',
+    description:
+      '查看和处理外置大脑的「反思候选」。反思是系统从记忆里捞出来的推断（模式 / 知识缺口 / 矛盾 / 未兑现的承诺）。\n' +
+      'action：list 只读列出待处理候选；dismiss 否决一条（终态，之后不能再晋升）；promote 把一条写成记忆（低置信度、标 inference）；run 主动跑一次反思生成新候选。\n' +
+      '受权限等级约束（autonomy.max_level）：L0 只能 list；L1 只能否 ≤0.45 的噪声；L2 能否决任意；L3 才能晋升；run 需 reflection.enabled=1 且 ≥L2。\n' +
+      '否决前先 list 看清楚——它是不可逆的。',
+    parameters: {
+      action: {
+        type: 'string',
+        description: 'list（默认）| dismiss | promote | run',
+      },
+      reflectionId: {
+        type: 'string',
+        description: 'dismiss / promote 时必填，来自 list 返回的 id。',
+      },
+      reason: {
+        type: 'string',
+        description: '可选：为什么这么处理（≤160 字，会带进调用记录与 reflections 的处理人字段）。',
+      },
+      limit: {
+        type: 'number',
+        description: 'list 返回条数，默认 10，最大 50。',
+      },
+    },
+    output: {
+      schema: { type: 'json' },
+      render: (_args, value) => [{ type: 'text', text: value.message }],
+    },
+    async execute(args, exec) {
+      const startedAt = Date.now()
+      const sessionId = exec && exec.agent && exec.agent.session ? exec.agent.session.id : null
+      /** @type {{ ok: boolean, code: string|null, id: string|null }} */
+      let usageOutcome = { ok: false, code: 'NO_OUTCOME', id: null }
+      try {
+        const action = String((args && args.action) || 'list').trim().toLowerCase()
+        const brain = await getBrain()
+        const reflect = brain.cognition && brain.cognition.reflect
+        if (!reflect || typeof reflect.dismiss !== 'function') {
+          usageOutcome = { ok: false, code: 'NO_FACADE', id: null }
+          return { ok: false, code: 'NO_FACADE', message: '反思门面没接线（brain.cognition.reflect 不可用）。' }
+        }
+        const ws = brain.workspace
+        const rawLevel = ws && typeof ws.getSwitch === 'function' ? ws.getSwitch('autonomy.max_level') : null
+        // 规范化等级（读不到 / 不认识 → L0）。判据见 resolveReflectionPermission 的注释。
+        const level = resolveReflectionPermission({ level: rawLevel, action: 'list' }).level
+        const paused = !!(ws && typeof ws.isPaused === 'function' && ws.isPaused())
+        const why = args && typeof args.reason === 'string' ? args.reason.trim().slice(0, 160) : ''
+        const levelHint = '当前 autonomy.max_level=' + level + '。'
+          + 'L0 只能看；L1 能否决 ≤0.45 的噪声；L2 能否决任意；L3 才能晋升。'
+
+        // ── list：纯读。不看暂停、不看开关——只是把候选读出来。──
+        if (action === 'list') {
+          const limit = Math.max(1, Math.min(50, Number(args && args.limit) || 10))
+          const out = reflect.list({ scopeId, status: 'candidate', limit })
+          const items = (out.items || []).map((it) => ({
+            id: it.id,
+            kind: it.kind,
+            confidence: it.confidence,
+            text: it.text,
+            evidence: it.evidence || null,
+            createdAt: it.createdAt,
+          }))
+          usageOutcome = { ok: true, code: null, id: null }
+          const lines = items.length
+            ? items.map((it) => '- ' + it.id + '（' + it.kind + '，置信 ' + it.confidence + '）：'
+              + String(it.text || '').slice(0, 100)).join('\n')
+            : '（当前没有待处理的候选——这可能是正常的：reflection.enabled 默认就是关的）'
+          return {
+            ok: true,
+            action: 'list',
+            level,
+            count: items.length,
+            items,
+            message: '待处理反思 ' + items.length + ' 条：\n' + lines + '\n\n' + levelHint,
+          }
+        }
+
+        // 从这里往下都是写操作：全局暂停一律不干
+        if (paused) {
+          usageOutcome = { ok: false, code: 'GLOBAL_PAUSED', id: null }
+          return { ok: false, code: 'GLOBAL_PAUSED', message: '全局暂停开着（paused=1）。处理反思算自主行为，暂停期间不做。' }
+        }
+
+        // ── run：主动跑一次反思。会新增候选，门槛比处理已有候选高一档。──
+        if (action === 'run') {
+          const enabled = ws && typeof ws.isEnabled === 'function' ? ws.isEnabled('reflection.enabled') : false
+          if (!enabled) {
+            usageOutcome = { ok: false, code: 'REFLECTION_DISABLED', id: null }
+            return {
+              ok: false, code: 'REFLECTION_DISABLED',
+              message: 'reflection.enabled 是关的（默认就是关）。这是主人的逃生门，我不替你开——'
+                + '要跑请在控制台打开这个开关。',
+            }
+          }
+          const permRun = resolveReflectionPermission({ level: rawLevel, action: 'run' })
+          if (!permRun.allowed) {
+            usageOutcome = { ok: false, code: 'LEVEL_TOO_LOW', id: null }
+            return { ok: false, code: 'LEVEL_TOO_LOW', message: '主动跑反思需要 L2 以上（' + level + '）。' + levelHint }
+          }
+          if (typeof reflect.runOnce !== 'function') {
+            usageOutcome = { ok: false, code: 'NO_FACADE', id: null }
+            return { ok: false, code: 'NO_FACADE', message: '反思门面没有 runOnce，跑不了。' }
+          }
+          const out = await reflect.runOnce({ trigger: 'manual', scopeId })
+          usageOutcome = { ok: true, code: null, id: out && out.runId ? String(out.runId) : null }
+          return {
+            ok: true,
+            action: 'run',
+            level,
+            runId: out && out.runId,
+            produced: out && out.produced,
+            message: '跑完一次反思（run ' + (out && out.runId) + '）：产出 '
+              + (out && out.produced != null ? out.produced : '—') + ' 条候选。'
+              + (out && out.error ? ' 错误：' + out.error : ''),
+          }
+        }
+
+        const id = args && typeof args.reflectionId === 'string' ? args.reflectionId.trim() : ''
+        if (!id) {
+          usageOutcome = { ok: false, code: 'EMPTY_ID', id: null }
+          return { ok: false, code: 'EMPTY_ID', message: 'reflectionId 不能为空（先 action=list 拿 id）。' }
+        }
+
+        if (action === 'dismiss') {
+          // L1 只允许否最弱的一档（knowledge_gap = 0.45）。
+          // 承诺类 0.5、模式类 0.6、矛盾类 0.85 都要 L2——那几档否错了代价比噪声大。
+          let item = null
+          try {
+            item = typeof reflect.get === 'function' ? reflect.get(id, { scopeId }) : null
+          } catch {
+            item = null
+          }
+          const conf = item && item.confidence != null ? Number(item.confidence) : null
+          const perm = resolveReflectionPermission({ level: rawLevel, action: 'dismiss', confidence: conf })
+          if (!perm.allowed) {
+            usageOutcome = { ok: false, code: 'LEVEL_TOO_LOW', id }
+            return {
+              ok: false,
+              code: 'LEVEL_TOO_LOW',
+              id,
+              message: (perm.reason === 'level_too_low_for_confidence'
+                ? '这条的置信度是 ' + (conf == null ? '未知（读不到这条）' : conf)
+                  + '，否决它需要 L2（' + level + '）。'
+                : 'L0 只能看，不能否决。') + levelHint,
+            }
+          }
+          const result = await reflect.dismiss(id, {
+            by: 'agent:brain_reflection' + (why ? '|' + why : ''),
+            scopeId,
+          })
+          usageOutcome = { ok: true, code: null, id }
+          return {
+            ok: true,
+            action: 'dismiss',
+            level,
+            id,
+            alreadyDismissed: !!(result && result.alreadyDismissed),
+            message: (result && result.alreadyDismissed
+              ? '这条之前已经否决过，没重复写。'
+              : '已否决 ' + id + '（等级 ' + level + '）。')
+              + '否决是终态：之后不能再晋升它。',
+          }
+        }
+
+        if (action === 'promote') {
+          const permPromote = resolveReflectionPermission({ level: rawLevel, action: 'promote' })
+          if (!permPromote.allowed) {
+            usageOutcome = { ok: false, code: 'LEVEL_TOO_LOW', id }
+            return {
+              ok: false, code: 'LEVEL_TOO_LOW', id,
+              message: '晋升反思需要 L3（' + level + '）——这一步会往记忆库里写一条长期记忆。' + levelHint,
+            }
+          }
+          const result = await reflect.promote(id, { scopeId })
+          usageOutcome = { ok: true, code: null, id }
+          return {
+            ok: true,
+            action: 'promote',
+            level,
+            id,
+            memoryId: result && (result.memoryId != null ? result.memoryId : null),
+            promoted: !!(result && result.promoted !== false),
+            message: '已晋升 ' + id + ' → 记忆 ' + (result && result.memoryId) + '（置信度上限 0.6，标 inference）。',
+          }
+        }
+
+        usageOutcome = { ok: false, code: 'UNKNOWN_ACTION', id: null }
+        return {
+          ok: false, code: 'UNKNOWN_ACTION',
+          message: '不认识的 action：' + action + '（只有 list / dismiss / promote / run）。',
+        }
+      } catch (error) {
+        const failure = toolError(error, '处理反思')
+        usageOutcome = { ok: false, code: failure.code, id: null }
+        return failure
+      } finally {
+        recordUsage({
+          channel: 'write',
+          op: 'reflection',
+          query: null,
+          durationMs: Date.now() - startedAt,
+          sessionId,
+          ok: usageOutcome.ok,
+          code: usageOutcome.code,
+          hitCount: usageOutcome.ok ? 1 : 0,
+          hitIds: usageOutcome.id ? [usageOutcome.id] : [],
           status: usageOutcome.ok ? 'ok' : 'error',
         })
       }
@@ -3694,6 +4088,54 @@ export function apply(ctx, config) {
                 sendJson(res, { ok: false, code: 'FACADE_UNAVAILABLE', message: '类脑门面未接线，动不了反思' }, 501)
                 return
               }
+              // ── 权限门（2026-11-02 补）──────────────────────────────
+              // 这条路由原来直接调门面：既不判等级也不查暂停。后果是 L0 状态下，
+              // 在控制台点两下按钮就能晋升写长期记忆——那是 L3 才有的能力。
+              // 两步确认只挡误触，不挡越权，所以等级必须在这里判一次。
+              // 判定复用工具层的 resolveReflectionPermission（同文件），不另抄一份规则。
+              const wsForReflection = brain.workspace
+              if (!wsForReflection
+                || typeof wsForReflection.isPaused !== 'function'
+                || typeof wsForReflection.getSwitch !== 'function') {
+                sendJson(res, { ok: false, code: 'FACADE_UNAVAILABLE', message: '工作空间门面未接线，判不了权限' }, 501)
+                return
+              }
+              if (wsForReflection.isPaused()) {
+                sendJson(res, {
+                  ok: false,
+                  code: 'GLOBAL_PAUSED',
+                  message: '全局暂停开着（paused=1）。处理反思算自主行为，暂停期间不做。',
+                }, 409)
+                return
+              }
+              const reflectionAction = pathname.endsWith('/promote') ? 'promote' : 'dismiss'
+              // dismiss 在 L1 只允许否决置信 ≤0.45 的弱候选，所以要把置信度读出来。
+              // 读不到就按 null 处理：L1 会被拒（宁严不宽），L2 以上不受影响。
+              let reflectionConfidence = null
+              if (reflectionAction === 'dismiss') {
+                try {
+                  const listed = brain.cognition.reflect.list({ scopeId, status: 'candidate', limit: 200 })
+                  const hit = (listed && listed.items ? listed.items : []).find((item) => item.id === id)
+                  reflectionConfidence = hit ? hit.confidence : null
+                } catch { /* 读候选失败不阻断判定，按 null 走最严 */ }
+              }
+              const reflectionPerm = resolveReflectionPermission({
+                level: wsForReflection.getSwitch('autonomy.max_level'),
+                action: reflectionAction,
+                confidence: reflectionConfidence,
+              })
+              if (!reflectionPerm.allowed) {
+                sendJson(res, {
+                  ok: false,
+                  code: 'LEVEL_TOO_LOW',
+                  level: reflectionPerm.level,
+                  reason: reflectionPerm.reason,
+                  message: reflectionAction === 'promote'
+                    ? '晋升反思会写长期记忆，需要 L3（当前 ' + reflectionPerm.level + '）'
+                    : '否决反思需要 L1 以上；L1 只能否决置信 ≤0.45 的弱候选（当前 ' + reflectionPerm.level + '）',
+                }, 403)
+                return
+              }
               if (pathname.endsWith('/promote')) {
                 const result = await brain.cognition.reflect.promote(id, { scopeId })
                 sendJson(res, { ok: true, action: 'promote', result })
@@ -4137,7 +4579,9 @@ export function apply(ctx, config) {
                   : sent
                     ? (result.recorded === false
                       ? '消息已经发出去了，但发送记录没落库（' + String(result.recordError || '未知原因') + '）——这条要人工记一下'
-                      : '已通过 QQ 单聊发出（dsh-im 主动投递）')
+                      // 不写死平台名：投递目标是「通道配置」里那个，默认值写 QQ、
+                      // 生产实际配的是微信。写死任何一个，另一种实现下就是错话。
+                      : '已通过 dsh-im 投递到已配置的聊天通道')
                     : '没发出去：' + String(result && result.reason ? result.reason : '未知原因'),
               })
             } catch (error) {
@@ -4230,6 +4674,42 @@ export function apply(ctx, config) {
               })
             } catch (error) {
               writeFailure(res, paused ? '暂停' : '恢复', error)
+            }
+            return
+          }
+
+          // 批准指令：awaiting_approval → queued。
+          // 2026-11-02 补：这条路由原来根本不存在，于是 autonomy 转出来的指令
+          // 一律永远卡在 awaiting_approval——系统会生成「我想做点什么」，却没人能点头。
+          // 门面 approve() 自己严格校验状态（不是 awaiting_approval 就抛错），这里不重复判。
+          if (pathname === '/api/directives/approve') {
+            const body = await jsonAction(req, res)
+            if (!body) return
+            const id = typeof body.id === 'string' ? body.id.trim() : ''
+            if (!id) {
+              sendJson(res, { ok: false, code: 'INVALID_ARGUMENT', message: 'id 必填（指令 id）' }, 400)
+              return
+            }
+            try {
+              const brain = await getBrain()
+              if (!brain.directives || typeof brain.directives.approve !== 'function') {
+                sendJson(res, { ok: false, code: 'FACADE_UNAVAILABLE', message: '指令门面未接线，批不了' }, 501)
+                return
+              }
+              const result = await brain.directives.approve(id, {
+                by: 'console',
+                reason: typeof body.reason === 'string' && body.reason.trim()
+                  ? body.reason.trim().slice(0, 200)
+                  : '控制台人工批准',
+              })
+              sendJson(res, {
+                ok: true,
+                action: 'approve',
+                result,
+                note: '已批准并入队。它还要过调度器自己的闸门（暂停 / 等级 / 预算 / 有效期）才会真跑。',
+              })
+            } catch (error) {
+              writeFailure(res, '批准指令', error)
             }
             return
           }

@@ -83,6 +83,18 @@ function createDom(onStroke) {
   /** @type {Map<string, any>} */
   const byId = new Map()
 
+  // style：页面脚本既直接赋值（el.style.width = ...），也用 setProperty 写自定义属性
+  // （mood-page 的 --ring-c）。空对象两头都不满足，会在真要跑的时候抛 TypeError。
+  function makeStyle() {
+    /** @type {Map<string, string>} */
+    const props = new Map()
+    return {
+      setProperty(name, value) { props.set(String(name), String(value)) },
+      removeProperty(name) { props.delete(String(name)) },
+      getPropertyValue(name) { return props.get(String(name)) || '' },
+    }
+  }
+
   function makeEl(tag) {
     const node = {
       tagName: String(tag).toUpperCase(),
@@ -94,7 +106,7 @@ function createDom(onStroke) {
       href: '',
       value: '',
       colSpan: 0,
-      style: {},
+      style: makeStyle(),
       children: [],
       appendChild(child) { this.children.push(child); return child },
       addEventListener() {},
@@ -104,6 +116,27 @@ function createDom(onStroke) {
       querySelectorAll() { return [] },
       getBoundingClientRect() { return { left: 0, top: 0, right: 800, bottom: 600, width: 800, height: 600 } },
       getContext() { return makeCanvasContext(onStroke) },
+    }
+    // classList：页面脚本用 el.classList.toggle('ok', bool) 切状态样式（心海页的
+    // setFieldStatus 就是）。stub 漏了它会直接 TypeError，把「脚本能跑」这项
+    // 变成抛错、中断整个冒烟脚本——报出来的像是页面坏了，其实是 stub 不全。
+    const readClasses = () => String(node.className || '').split(/\s+/).filter(Boolean)
+    const writeClasses = (list) => { node.className = list.join(' ') }
+    node.classList = {
+      add(...names) {
+        const list = readClasses()
+        for (const name of names) if (!list.includes(name)) list.push(name)
+        writeClasses(list)
+      },
+      remove(...names) { writeClasses(readClasses().filter((name) => !names.includes(name))) },
+      contains(name) { return readClasses().includes(name) },
+      toggle(name, force) {
+        const has = readClasses().includes(name)
+        const want = force === undefined ? !has : Boolean(force)
+        if (want === has) return want
+        if (want) { const list = readClasses(); list.push(name); writeClasses(list) } else { writeClasses(readClasses().filter((item) => item !== name)) }
+        return want
+      },
     }
     created.push(node)
     return node

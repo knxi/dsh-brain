@@ -31,12 +31,13 @@
  *   user.db 19 实体 / 23 关联 / 0 边；project-7022… 99 / 201 / 8；project-3b92… 5 / 5 / 0
  *   合计 123 实体（117 个唯一名）、229 条关联、8 条边（7 contradicts + 1 supersedes）。
  */
+import { homedir } from 'node:os'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { ENTITY_KINDS, MEMORY_EDGE_KINDS, openBrain } from '../packages/memory/src/index.js'
 
-const ENGRAM_DIR = 'C:/Users/su/.dsh/engram'
+const ENGRAM_DIR = `${homedir()}/.dsh/engram`
 const BRAIN_DB = 'E:/ds-h/dsh-brain/data/brain.db'
 const MIGRATIONS = 'E:/ds-h/dsh-brain/migrations'
 const SCOPE_ID = 'owner-default'

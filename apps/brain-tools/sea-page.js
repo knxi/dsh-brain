@@ -20,7 +20,7 @@
 // 导航统一收在 nav.js（导航项与顺序只在那定义一次）。
 // 心海是近黑底全屏页，导航样式就地写在下面 <style> 里——不引 nav.js 的 CSS：
 // 页面内部的静态 import 不随页面热重载失效，改 nav.js 的样式会看不到（见 <style> 里的说明）。
-import { renderNav } from './nav.js'
+import { renderPageHead } from './nav.js?v=1793594997081'
 
 export function renderSeaPage() {
   return `<!DOCTYPE html>
@@ -30,206 +30,757 @@ export function renderSeaPage() {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>心海 · 外置大脑</title>
 <style>
-  *{box-sizing:border-box}
-  html,body{margin:0;height:100%;overflow:hidden;background:#0a0b0d;color:#c9ced6;
-    font:13px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
-    -webkit-font-smoothing:antialiased}
-  #sea{display:block;position:fixed;inset:0;cursor:grab}
-  #sea.dragging{cursor:grabbing}
+/* ══ THEME:BEGIN ══ */
+:root{
+  color-scheme:light;
+  --paper:#f2f4f7; --card:#ffffff; --card-2:#f7f8fa; --raise:#edf0f5;
+  --ink:#1a2332; --ink-2:#3d4a5c; --muted:#68788e; --faint:#98a5b7;
+  --line:#e4e8ef; --line-soft:rgba(25,42,68,.07);
+  --accent:#3b5bdb; --accent-2:#7048e8;
+  --accent-line:rgba(59,91,219,.40); --accent-soft:rgba(59,91,219,.09);
+  --ochre:var(--accent); --ochre-soft:var(--accent-soft);
+  --ok:#2f9e63;   --ok-soft:rgba(47,158,99,.11);
+  --warn:#dd7f0e; --warn-soft:rgba(221,127,14,.11);
+  --bad:#d64545;  --bad-soft:rgba(214,69,69,.09);
+  --slate:#8296ad; --violet:#8a6fd6;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Cascadia Mono",monospace;
+  --r:12px; --r-sm:7px;
+  --ease:cubic-bezier(.2,0,0,1);
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --ease-soft:cubic-bezier(.4,0,.2,1);
+  --dur-fast:.16s; --dur-normal:.28s; --dur-slow:.6s;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.65 var(--sans);
+  letter-spacing:.005em;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:linear-gradient(to right,rgba(59,91,219,.040) 1px,transparent 1px),
+    linear-gradient(to bottom,rgba(59,91,219,.040) 1px,transparent 1px);
+  background-size:56px 56px;
+  -webkit-mask-image:radial-gradient(ellipse 115% 75% at 50% 0%,#000,transparent 74%);
+  mask-image:radial-gradient(ellipse 115% 75% at 50% 0%,#000,transparent 74%)}
+body::after{content:"";position:fixed;inset:0 0 auto 0;height:400px;z-index:0;pointer-events:none;
+  background:radial-gradient(ellipse 70% 100% at 50% -24%,rgba(255,255,255,.9),transparent 70%)}
+body.sea-mode::before,body.sea-mode::after{display:none}
+::selection{background:rgba(59,91,219,.16);color:var(--ink)}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px}
+code{font-family:var(--mono);font-size:.92em;background:var(--raise);color:var(--ink-2);
+  padding:1px 5px;border-radius:4px}
+b,strong{font-weight:620;color:var(--ink)}
+em{font-style:normal;color:var(--accent)}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+*{scrollbar-width:thin;scrollbar-color:#d3dae4 transparent}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#d3dae4;border-radius:8px;border:3px solid var(--paper)}
+::-webkit-scrollbar-thumb:hover{background:#b9c3d2}
+:focus-visible{outline:1.5px solid var(--accent-line);outline-offset:2px;border-radius:3px}
+.wrap{position:relative;z-index:1;width:min(100%,1240px);margin:0 auto;
+  padding:24px clamp(20px,3.5vw,44px) 76px}
+.wrap.wrap--wide{width:min(100%,1360px)}
+.brandbar{display:flex;align-items:center;gap:12px;min-height:54px;padding-bottom:16px;
+  border-bottom:1px solid var(--line-soft);font-family:var(--mono)}
+.brandmark{position:relative;width:30px;height:30px;display:grid;place-items:center;flex:none}
+.brandmark::before,.brandmark::after{content:"";position:absolute;inset:2px;
+  border:1.5px solid var(--accent-line);transform:rotate(45deg);border-radius:2px}
+.brandmark::before{animation:brand-spin 12s linear infinite;transform-origin:50% 50%}
+.brandmark::after{inset:8px;border-color:var(--accent)}
+.brandmark i{width:4px;height:4px;border-radius:50%;background:var(--accent)}
+@keyframes brand-spin{to{transform:rotate(405deg)}}
+.brandname{font-size:.76rem;font-weight:650;letter-spacing:.22em;color:var(--ink)}
+.brandname small{display:block;font-size:.5rem;font-weight:500;letter-spacing:.3em;
+  color:var(--muted);margin-top:1px}
+.system-state{display:flex;align-items:center;gap:8px;margin-left:auto;height:28px;padding:0 10px;
+  border:1px solid var(--line);border-radius:999px;background:var(--card);
+  font-size:9px;letter-spacing:.14em;color:var(--muted)}
+.system-state b{font-weight:500;color:var(--ok)}
+.system-state .lamp{width:5px;height:5px;box-shadow:0 0 0 3px var(--ok-soft)}
+.head{display:grid;grid-template-columns:minmax(0,auto) minmax(280px,1fr);gap:8px 34px;
+  margin-top:30px}
+.head-kicker{grid-column:1/-1;font:500 .58rem/1.2 var(--mono);letter-spacing:.24em;
+  color:var(--accent);opacity:.9}
+h1{display:flex;align-items:center;gap:10px;margin:0;
+  font-size:clamp(2rem,3vw,2.55rem);font-weight:640;letter-spacing:-.045em;line-height:1.08}
+h1::before{content:"";width:3px;height:.72em;border-radius:2px;flex:none;
+  background:linear-gradient(var(--accent),rgba(59,91,219,.25))}
+.head>.sub{justify-self:end;text-align:right;max-width:46ch;padding-bottom:5px;
+  font-size:.82rem;line-height:1.65;color:var(--muted)}
+.nav{position:sticky;top:12px;z-index:10;grid-column:1/-1;
+  display:flex;flex-wrap:nowrap;gap:4px;align-items:center;margin-top:24px;padding:6px;
+  border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.86);
+  backdrop-filter:blur(16px);box-shadow:0 4px 18px rgba(23,32,60,.05);
+  overflow-x:auto;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.navlink{position:relative;flex:0 0 auto;min-height:38px;display:grid;place-items:center;
+  padding:0 12px;border:1px solid transparent;border-radius:7px;background:transparent;
+  font-size:.76rem;letter-spacing:.04em;color:var(--muted);text-decoration:none;
+  white-space:nowrap;cursor:pointer;
+  transition:color var(--dur-fast) var(--ease-soft),background var(--dur-fast),
+    border-color var(--dur-fast),transform var(--dur-fast) var(--ease-out)}
+.navlink:hover{transform:translateY(-1px);background:var(--raise);color:var(--ink);
+  text-decoration:none}
+.navlink:active{transform:translateY(1px)}
+.navlink.active{border-color:var(--accent-line);
+  background:linear-gradient(180deg,rgba(59,91,219,.11),rgba(59,91,219,.045));
+  color:var(--accent);font-weight:560}
+.navlink.active:hover{background:linear-gradient(180deg,rgba(59,91,219,.13),rgba(59,91,219,.06));
+  color:var(--accent)}
+.navlink::after{content:"";position:absolute;left:28%;right:28%;bottom:4px;height:2px;
+  border-radius:1px;background:var(--accent);transform:scaleX(0);transform-origin:center;
+  transition:transform var(--dur-normal) var(--ease-out)}
+.navlink.active::after{transform:scaleX(1)}
+.path{display:flex;align-items:center;gap:8px;margin:16px 0 24px;
+  font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.035em;
+  word-break:break-all}
+.path::before{content:"PATH";flex:none;font-size:8px;letter-spacing:.15em;color:var(--accent);
+  border:1px solid var(--accent-line);padding:1px 5px;border-radius:3px;
+  background:var(--accent-soft)}
+.path::after{content:"";flex:1;height:1px;margin-left:6px;
+  background:linear-gradient(90deg,var(--line),var(--line-soft) 55%,transparent 88%)}
+.view{display:none}
+.view.active{display:block;animation:view-in .36s var(--ease)}
+@keyframes view-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.view.active>*{animation:rise-in .46s var(--ease-out) both}
+.view.active>*:nth-child(2){animation-delay:45ms}.view.active>*:nth-child(3){animation-delay:90ms}
+.view.active>*:nth-child(4){animation-delay:135ms}.view.active>*:nth-child(5){animation-delay:180ms}
+.view.active>*:nth-child(6){animation-delay:225ms}
+.view.active>*:nth-child(n+7){animation-delay:270ms}
+@keyframes rise-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.stats{display:flex;flex-wrap:wrap;padding:0;margin-bottom:18px;overflow:hidden;
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:0 1px 2px rgba(23,32,60,.04)}
+.stat{display:flex;flex-direction:column;gap:2px;padding:14px 22px;flex:1;min-width:112px;
+  border-right:1px solid var(--line-soft)}
+.stat:last-child{border-right:none}
+.stat-k{font-size:10px;color:var(--muted);letter-spacing:.09em}
+.stat-v{font-size:1.34rem;font-weight:600;font-family:var(--mono);
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em;color:var(--ink);line-height:1.35}
+.stat-v.ok{color:var(--ok)} .stat-v.warn{color:var(--warn)} .stat-v.bad{color:var(--bad)}
+.stat-n{font-size:11px;color:var(--faint);line-height:1.6}
+.stat--big .stat-v{font-size:2.15rem}
+.searchbar{display:flex;gap:8px;align-items:center;margin:0 0 16px;padding:8px;
+  border:1px solid var(--line);border-radius:12px;background:var(--card);
+  box-shadow:0 1px 2px rgba(23,32,60,.04)}
+.searchbar .input{flex:1;min-width:240px;border-color:transparent;background:var(--card-2)}
+.input,.select{height:36px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r-sm);
+  background:var(--card);font:inherit;font-size:13px;color:var(--ink);outline:none;
+  transition:border-color var(--dur-fast) var(--ease),box-shadow var(--dur-fast) var(--ease),
+    background var(--dur-fast)}
+.input::placeholder{color:var(--faint)}
+.input:focus,.select:focus{border-color:var(--accent-line);background:var(--card);
+  box-shadow:0 0 0 3px rgba(59,91,219,.12)}
+.select{font-family:var(--mono);font-size:12px;padding:0 8px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:34px;padding:0 15px;border:1px solid var(--line);border-radius:var(--r-sm);
+  background:var(--card);color:var(--ink-2);font:inherit;font-size:13px;cursor:pointer;
+  white-space:nowrap;
+  transition:transform var(--dur-fast) var(--ease-out),border-color var(--dur-fast),
+    color var(--dur-fast),background var(--dur-fast),box-shadow var(--dur-fast)}
+.btn:hover{transform:translateY(-1px);border-color:#c9d2e0;background:var(--raise);
+  color:var(--ink)}
+.btn:active{transform:translateY(0) scale(.975)}
+.btn--primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;
+  box-shadow:0 2px 8px rgba(59,91,219,.28)}
+.btn--primary:hover{background:#334fc4;border-color:#334fc4;color:#fff;
+  box-shadow:0 4px 14px rgba(59,91,219,.34)}
+.btn--ghost{background:transparent;border-color:var(--line-soft)}
+.btn--danger{border-color:var(--bad-soft);color:var(--bad)}
+.btn--danger:hover{background:var(--bad-soft);border-color:var(--bad);color:var(--bad)}
+.btn--sm{height:28px;padding:0 11px;font-size:12px;font-family:var(--mono)}
+.btn[disabled]{opacity:.38;cursor:not-allowed;transform:none}
+.panel{border:1px solid var(--line);border-radius:var(--r);background:var(--card);
+  overflow:hidden;box-shadow:0 1px 2px rgba(23,32,60,.04)}
+.panel+.panel{margin-top:16px}
+.panel-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;
+  padding:13px 18px;border-bottom:1px solid var(--line);background:var(--card-2)}
+.panel-title{font-size:13px;font-weight:600;color:var(--ink);line-height:1.5}
+.panel-meta{font-size:11px;color:var(--muted);margin-left:auto;font-family:var(--mono)}
+.panel-body{padding:16px 18px}
+.panel-foot{padding:10px 16px;border-top:1px solid var(--line-soft);font-size:11.5px;
+  color:var(--muted);line-height:1.7}
+.panel--quiet{background:transparent;border-style:dashed;box-shadow:none}
+.split{display:grid;grid-template-columns:minmax(0,1.62fr) minmax(0,1fr);gap:20px;
+  align-items:start}
+.split--even{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
+.list{display:flex;flex-direction:column;overflow:hidden;
+  border:1px solid var(--line);border-radius:var(--r);background:var(--card);
+  box-shadow:0 1px 2px rgba(23,32,60,.04)}
+.row{position:relative;padding:12px 18px 12px 20px;cursor:pointer;
+  border-bottom:1px solid var(--line-soft);
+  transition:background var(--dur-normal) var(--ease-soft)}
+.row:last-child{border-bottom:none}
+.row::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;
+  background:transparent;transition:background var(--dur-fast) var(--ease)}
+.row:hover{background:var(--raise)}
+.row:hover::before{background:var(--accent)}
+.row.is-selected{background:var(--raise);box-shadow:inset 0 0 0 1px rgba(59,91,219,.10)}
+.row.is-selected::before{background:var(--accent)}
+.row-top{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.row-title{font-size:13px;flex:1;min-width:0;color:var(--ink-2);line-height:1.6}
+.row:hover .row-title,.row.is-selected .row-title{color:var(--ink)}
+.row-id{font-family:var(--mono);font-size:10px;color:var(--faint);flex:none}
+.list .row{animation:row-in .28s var(--ease-out) both}
+.list .row:nth-child(2){animation-delay:24ms}.list .row:nth-child(3){animation-delay:48ms}
+.list .row:nth-child(4){animation-delay:72ms}.list .row:nth-child(5){animation-delay:96ms}
+.list .row:nth-child(6){animation-delay:120ms}.list .row:nth-child(7){animation-delay:144ms}
+.list .row:nth-child(8){animation-delay:168ms}.list .row:nth-child(9){animation-delay:192ms}
+.list .row:nth-child(n+10){animation-delay:216ms}
+@keyframes row-in{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
+.chips{display:flex;gap:5px;flex-wrap:wrap}
+.chip{font-size:10.5px;padding:1.5px 7px;border-radius:4px;white-space:nowrap;
+  font-family:var(--mono);background:var(--raise);color:var(--muted)}
+.chip.accent{background:var(--accent-soft);color:var(--accent)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}
+.chip.warn{background:var(--warn-soft);color:var(--warn)}
+.chip.bad{background:var(--bad-soft);color:var(--bad)}
+.chip.plain{background:transparent;color:var(--faint);box-shadow:inset 0 0 0 1px var(--line)}
+.tags{display:flex;gap:4px 14px;flex-wrap:wrap;margin-top:5px;align-items:center}
+.tag{font-size:10.5px;padding:0;color:var(--faint);font-family:var(--mono);
+  letter-spacing:.01em;white-space:nowrap;line-height:1.7}
+.tag.ok{color:var(--ok)}
+.tag.bad{padding:0 5px;border-radius:3px;background:var(--bad-soft);color:var(--bad)}
+.tag.accent{color:var(--accent)}
+.note{font-size:12px;color:var(--muted);line-height:1.8;margin:0;
+  padding:10px 14px;border-left:2px solid var(--line);border-radius:0 6px 6px 0;
+  background:linear-gradient(90deg,rgba(59,91,219,.035),transparent 70%)}
+.note.warn{border-left-color:var(--warn);background:var(--warn-soft);color:#9a5f0d}
+.note.bad{border-left-color:var(--bad);background:var(--bad-soft);color:#a03c3c}
+.note b{color:var(--ink)}
+.kv{display:grid;grid-template-columns:96px minmax(0,1fr);gap:8px 12px;margin:0;font-size:12px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;color:var(--ink-2);font-family:var(--mono);font-size:11.5px;
+  word-break:break-all;font-variant-numeric:tabular-nums}
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.tbl th{text-align:left;font-weight:500;color:var(--muted);font-size:9.5px;
+  letter-spacing:.08em;text-transform:uppercase;font-family:var(--mono);
+  padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td{padding:9px 10px;border-bottom:1px solid var(--line-soft);color:var(--ink-2);
+  vertical-align:baseline}
+.tbl tr:last-child td{border-bottom:none}
+.tbl td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;
+  white-space:nowrap}
+.tbl td.mono{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+.tbl tbody tr{transition:background var(--dur-fast) var(--ease-soft)}
+.tbl tbody tr:hover{background:rgba(59,91,219,.035)}
+.empty{padding:44px 20px;text-align:center;color:var(--muted);font-size:13px;line-height:1.9}
+.empty strong{display:block;color:var(--ink);font-size:13.5px;font-weight:600;margin-bottom:5px}
+.empty span{display:block;max-width:540px;margin:0 auto}
+.lamp{width:7px;height:7px;border-radius:50%;flex:none;display:inline-block;vertical-align:1px}
+.lamp.ok{background:var(--ok)} .lamp.warn{background:var(--warn)}
+.lamp.bad{background:var(--bad)} .lamp.off{background:var(--faint)}
+.bars{display:flex;align-items:flex-end;gap:6px;height:110px;padding-top:6px}
+.bar{flex:1;min-width:8px;height:100%;display:flex;flex-direction:column;
+  justify-content:flex-end;gap:2px}
+.bar-i{background:linear-gradient(to top,rgba(59,91,219,.45),var(--accent));
+  border-radius:2px 2px 0 0;min-height:2px}
+.bar-i.zero{background:var(--line)}
+.bar-x{font-family:var(--mono);font-size:9px;color:var(--faint);text-align:center;
+  white-space:nowrap;overflow:hidden;height:12px}
+.legend{display:flex;gap:14px;font-size:11px;color:var(--muted);margin-top:10px}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;
+  vertical-align:0}
+.rank{display:flex;align-items:baseline;gap:10px;padding:7px 0;
+  border-bottom:1px solid var(--line-soft);font-size:12.5px}
+.rank:last-child{border-bottom:none}
+.rank-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--ink-2)}
+.rank-n{font-family:var(--mono);font-size:11.5px;color:var(--muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.ev{display:flex;gap:14px;padding:11px 0;border-bottom:1px solid var(--line-soft)}
+.ev:last-child{border-bottom:none}
+.ev-when{font-family:var(--mono);font-size:11.5px;color:var(--faint);white-space:nowrap;
+  min-width:86px;padding-top:2px;font-variant-numeric:tabular-nums}
+.ev-main{flex:1;min-width:0}
+.ev-label{font-size:13px;color:var(--ink);line-height:1.5}
+.ev-note{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.7}
+.ev-delta{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.dl{font-family:var(--mono);font-size:10.5px;padding:1px 7px;border-radius:4px;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.dl.up{background:var(--ok-soft);color:var(--ok)}
+.dl.down{background:var(--bad-soft);color:var(--bad)}
+.switch-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.switch{display:flex;flex-direction:column;gap:6px;padding:14px 15px;
+  border:1px solid var(--line);border-radius:var(--r);background:var(--card);
+  transition:transform var(--dur-normal) var(--ease-out),border-color var(--dur-normal),
+    box-shadow var(--dur-normal)}
+.switch:hover{transform:translateY(-2px);border-color:rgba(59,91,219,.30);
+  box-shadow:0 10px 26px rgba(23,32,60,.09)}
+.switch-top{display:flex;align-items:baseline;gap:8px}
+.switch-name{font-size:13px;color:var(--ink);font-weight:560;flex:1}
+.switch-key{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+.switch-desc{font-size:11.5px;color:var(--muted);line-height:1.7}
+.switch-note{font-size:11px;color:var(--faint);line-height:1.7;
+  border-left:2px solid var(--line-soft);padding-left:8px}
+.switch .btn{align-self:flex-start;margin-top:2px}
+.duo{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0}
+.duo-col{padding:14px 16px}
+.duo-col+.duo-col{border-left:1px solid var(--line)}
+.duo-h{font-size:11px;color:var(--muted);letter-spacing:.06em;margin-bottom:10px}
+.allow{display:flex;flex-direction:column;gap:10px}
+.allow-i{padding:10px 12px;border:1px solid var(--line-soft);border-radius:var(--r-sm);
+  background:var(--card-2)}
+.allow-t{font-size:12.5px;color:var(--accent);font-weight:560;margin-bottom:3px}
+.allow-d{font-size:11.5px;color:var(--muted);line-height:1.7}
+.allow-r{font-size:11px;color:var(--faint);line-height:1.7;margin-top:4px;
+  border-top:1px solid var(--line-soft);padding-top:4px}
+.forbid{display:flex;flex-direction:column;gap:9px;font-size:12px;color:var(--ink-2);
+  line-height:1.75}
+.forbid-i{display:flex;gap:9px}
+.forbid-i::before{content:"";width:5px;height:5px;border-radius:1px;background:var(--bad);
+  flex:none;margin-top:7px}
+.budget{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+.budget-top{display:flex;align-items:baseline;gap:8px;font-size:12px}
+.budget-k{color:var(--muted);flex:1}
+.budget-num{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);
+  font-variant-numeric:tabular-nums}
+.budget-track{height:6px;border-radius:3px;background:var(--raise);overflow:hidden}
+.budget-fill{height:100%;border-radius:3px;
+  background:linear-gradient(90deg,var(--accent-2),var(--accent))}
+.budget-fill.over{background:var(--bad)}
+.vs{display:grid;grid-template-columns:minmax(0,1fr) 40px minmax(0,1fr);gap:0;
+  align-items:stretch}
+.vs-card{padding:14px 16px;border:1px solid var(--line);border-radius:var(--r);
+  background:var(--card);display:flex;flex-direction:column;gap:8px}
+.vs-mid{display:grid;place-items:center;color:var(--faint);font-size:15px}
+.vs-side{font-size:10.5px;color:var(--faint);letter-spacing:.06em;font-family:var(--mono)}
+.vs-body{font-size:12.5px;color:var(--ink-2);line-height:1.75}
+.vs-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.foot{margin-top:48px;padding-top:22px;border-top:1px solid var(--line);
+  display:flex;gap:16px;flex-wrap:wrap;align-items:center;
+  font-family:var(--mono);font-size:9px;letter-spacing:.06em;color:var(--faint)}
+.foot::before{content:"";width:5px;height:5px;background:var(--accent)}
+@media(max-width:980px){
+  .split,.split--even,.grid2,.grid3{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:900px){
+  .head{grid-template-columns:1fr}
+  .head>.sub{justify-self:start;text-align:left;max-width:62ch}
+  .nav{top:8px;margin-top:18px;overflow-x:auto;justify-content:flex-start;
+    mask-image:linear-gradient(90deg,#000 82%,transparent 97%);
+    -webkit-mask-image:linear-gradient(90deg,#000 82%,transparent 97%)}
+  .navlink{flex:0 0 auto;min-width:64px}
+  .switch-grid{grid-template-columns:minmax(0,1fr)}
+  .duo{grid-template-columns:minmax(0,1fr)}
+  .duo-col+.duo-col{border-left:none;border-top:1px solid var(--line)}
+  .vs{grid-template-columns:minmax(0,1fr)}
+  .vs-mid{display:none}
+}
+@media(max-width:800px){
+  .wrap{padding:18px 16px 44px}
+  .system-state span{display:none}
+  .path{margin-bottom:16px}
+}
+@media(max-width:560px){
+  .brandbar{min-height:48px;padding-bottom:14px}
+  .brandname{font-size:.68rem}
+  .system-state{font-size:8px}
+  .head{margin-top:22px}
+  .head-kicker{font-size:.54rem}
+  h1{font-size:1.6rem}
+  .path{margin:14px 0 18px}
+  .searchbar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:stretch}
+  .searchbar .input{grid-column:1/-1;min-width:0}
+  .searchbar .btn{width:100%;min-height:42px}
+  .stat{min-width:46%;padding:13px 16px}
+  .stat:nth-child(2n){border-right:none}
+  .stat-v{font-size:1.12rem}
+  .panel-body{padding:16px}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;
+    animation-iteration-count:1!important;transition-duration:.01ms!important;
+    scroll-behavior:auto!important}
+  .view.active>*{animation:none}
+}
+/* ══ THEME:END ══ */
 
-  #bar{position:fixed;top:0;left:0;right:0;z-index:10;display:flex;align-items:center;gap:14px;
-    padding:12px 18px;background:linear-gradient(180deg,rgba(10,11,13,.94),rgba(10,11,13,0))}
-  #bar h1{font-size:14.5px;font-weight:600;margin:0;letter-spacing:.03em;color:#e9ebee;flex:none}
-  .modes{display:flex;gap:2px;padding:2px;border-radius:9px;background:#171b21;
-    border:1px solid rgba(255,255,255,.09)}
-  .mode{font-size:11.5px;padding:5px 11px;border-radius:7px;cursor:pointer;color:#8b929c;
-    background:transparent;border:none;transition:all .15s;white-space:nowrap;font-family:inherit}
-  .mode:hover{color:#c9ced6}
-  .mode.on{background:rgba(227,166,98,.15);color:#e3a662}
-  #count{margin-left:auto;font-size:11.5px;color:#79818d;font-variant-numeric:tabular-nums;flex:none}
-  #count b{color:#b7bdc7;font-weight:600}
-  .btn{font-size:11.5px;padding:5px 11px;border-radius:7px;cursor:pointer;flex:none;font-family:inherit;
-    border:1px solid rgba(255,255,255,.13);background:#161a20;color:#c9ced6;
-    transition:all .15s;text-decoration:none;display:inline-block}
-  .btn:hover{border-color:rgba(232,180,110,.5);color:#fff;background:#232830}
-  .btn.on{border-color:rgba(232,180,110,.55);color:#e3a662}
+/* ══ 心海 v3「视窗」══
+   v2 是全屏仪器：画布铺满整个窗口，标题和统计只能浮在渐隐层上。
+   v3 把它收进一张圆角卡片——页面回到正常的浅色文档流（标题 / 统计条 / 视窗 / 说明），
+   深空只活在里面那一块。
 
-  #side{position:fixed;left:14px;top:60px;bottom:48px;width:186px;z-index:9;
-    display:flex;flex-direction:column;gap:12px;overflow-y:auto;padding-right:2px}
-  #side::-webkit-scrollbar{width:5px}
-  #side::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:3px}
-  .card{padding:11px 12px;border-radius:11px;background:#101319;
-    border:1px solid rgba(255,255,255,.08);/* 无毛玻璃：实心面板 */}
-  .card h3{margin:0 0 8px;font-size:10px;font-weight:600;letter-spacing:.09em;
-    text-transform:uppercase;color:#6b7178}
-  .item{display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;
-    font-size:12px;color:#a8afb9;transition:color .13s;user-select:none}
-  .item:hover{color:#e9ebee}
-  .item.off{opacity:.32}
-  .dot{width:8px;height:8px;border-radius:50%;flex:none}
-  .item .n{margin-left:auto;font-size:10.5px;color:#6b7178;font-variant-numeric:tabular-nums}
-  #q{width:100%;padding:6px 9px;border-radius:7px;font-size:12px;font-family:inherit;
-    border:1px solid rgba(255,255,255,.09);background:#0a0b0d;color:#c9ced6;outline:none}
-  #q:focus{border-color:rgba(232,180,110,.45)}
-  #q::placeholder{color:#4b525c}
+   这么改不只是为了好看：全屏画布下，画布的坐标基准是 innerWidth/innerHeight，
+   而视窗内的 HUD（顶部条、左右栏、底部提示）全靠 --chrome-h 这个量出来的变量避让，
+   标题说明多折一行整组 HUD 就错位。收进卡片后视窗有确定的矩形边界，
+   canvas 的投影中心改成视窗自己的宽高，页面布局怎么变都不影响三维画面。 */
 
-  #detail{position:fixed;right:14px;top:60px;width:336px;max-height:calc(100vh - 148px);
-    overflow-y:auto;z-index:11;padding:16px 18px;border-radius:13px;display:none;
-    background:#0f1216;border:1px solid rgba(255,255,255,.12);
-    box-shadow:0 18px 60px rgba(0,0,0,.65);}
-  #detail::-webkit-scrollbar{width:5px}
-  #detail::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:3px}
-  #detail.show{display:block}
-  #detail .x{float:right;cursor:pointer;color:#6b7178;font-size:15px;line-height:1;padding:1px 4px}
-  #detail .x:hover{color:#c9ced6}
-  #detail h2{font-size:13.5px;font-weight:600;margin:0 0 9px;color:#e9ebee;line-height:1.5;padding-right:20px}
-  .chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:11px}
-  .chip{font-size:10.5px;padding:2px 8px;border-radius:6px;background:rgba(255,255,255,.07);color:#9aa1ab}
-  .chip.warn{background:rgba(200,120,90,.16);color:#d99a76}
-  .body{font-size:12.5px;color:#a4abb6;line-height:1.75;white-space:pre-wrap;word-break:break-word;
-    max-height:220px;overflow-y:auto;margin-bottom:12px}
-  .row{display:grid;grid-template-columns:62px 1fr;gap:8px;padding:4px 0;
-    border-bottom:1px solid rgba(255,255,255,.045);font-size:11.5px}
-  .row:last-child{border-bottom:none}
-  .k{color:#6b7178}
-  .v{color:#a4abb6;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-all}
+/* 统计条：四格白卡，label 走英文代号 + 中文注，数值是等宽大字。
+   下边距原来写 0，白卡跟下面的深空面板直接贴死，两块不同材质的块黏成一片、
+   谁也读不出边界。给 18px 呼吸（跟 .stats 的默认下边距同值），别让他们粘连。 */
+.stats--sea{margin:14px 0 18px}
+.stats--sea .stat{padding:11px 20px;gap:2px}
+.stats--sea .stat-k{display:flex;align-items:baseline;gap:6px;font-size:10px;color:var(--muted);
+  letter-spacing:.04em;white-space:nowrap}
+.stats--sea .stat-k i{font:500 8.5px var(--mono);font-style:normal;letter-spacing:.16em;
+  color:var(--faint);text-transform:uppercase}
+.stats--sea .stat-v{font-size:1.5rem;line-height:1.3}
+.stats--sea .stat-v.ok{color:#17915c}
 
-  #ctx{position:fixed;left:50%;bottom:16px;transform:translateX(-50%) translateY(14px);
-    z-index:12;display:flex;gap:7px;padding:7px;border-radius:11px;opacity:0;pointer-events:none;
-    background:#111419;border:1px solid rgba(255,255,255,.12);
-    box-shadow:0 12px 40px rgba(0,0,0,.6);transition:all .18s}
-  #ctx.show{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0)}
+/* 视窗本体：深空卡片。
+   高度策略：**上限贴着「一屏刚好放得下」定**。
+   骨架（品牌条 + 标题 + 导航 + 统计条 + 内边距）压到约 380px，900px 高的窗口里
+   剩下的 520 只是 flex 分出来的残余——那样黑框占屏 58%，星云被压成一条。
+   改成 min-height:580 之后 flex 不再起作用，视窗固定吃 580（占屏约 64%），
+   整页高度刚好落在一屏内，既没有滚动条，也比初版的 450 大了近三成。
+   （窗口更高时 flex 会继续把它撑满。） */
+body.sea-page .wrap{display:flex;flex-direction:column;min-height:100vh;
+  padding:14px clamp(20px,3.5vw,44px) 18px}
+body.sea-page .wrap>*{flex:none}
+body.sea-page .brandbar{min-height:44px;padding-bottom:11px}
+body.sea-page .head{margin-top:12px}
+body.sea-page h1{font-size:clamp(1.85rem,2.6vw,2.2rem)}
+body.sea-page .nav{margin-top:14px}
+.viewport{position:relative;flex:1 1 auto;min-height:580px;margin:0;border-radius:16px;overflow:hidden;
+  background:radial-gradient(ellipse 92% 74% at 50% 40%,#0c1322 0%,#070c16 52%,#04060c 100%);
+  border:1px solid #1a2540;
+  box-shadow:0 26px 64px -30px rgba(13,21,44,.62),inset 0 1px 0 rgba(120,170,255,.06)}
+/* 四周暗角：星云往中间收，卡片边缘不散成一圈亮点 */
+.viewport::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:radial-gradient(ellipse 86% 80% at 50% 46%,transparent 44%,rgba(3,6,12,.46) 100%)}
+#sea{display:block;position:relative;z-index:0;cursor:grab;touch-action:none}
+#sea.dragging{cursor:grabbing}
 
-  #tip{position:fixed;z-index:13;pointer-events:none;display:none;max-width:280px;
-    padding:7px 11px;border-radius:8px;font-size:11.5px;line-height:1.55;color:#c9ced6;
-    background:#0c0e11;border:1px solid rgba(255,255,255,.13);
-    box-shadow:0 8px 26px rgba(0,0,0,.6)}
-  #tip.show{display:block}
-  #tip b{color:#e9ebee}
+/* HUD：整层不吃事件，只有真正的控件吃 */
+.vp-hud{position:absolute;inset:0;z-index:2;pointer-events:none;font-family:var(--mono)}
+.vp-hud>*{pointer-events:auto}
+.vp-tl{position:absolute;top:15px;left:17px;display:flex;flex-direction:column;gap:10px;
+  align-items:flex-start;pointer-events:none}
+.vp-tl>*{pointer-events:auto}
+.vp-tr{position:absolute;top:15px;right:17px;display:flex;flex-direction:column;gap:10px;
+  align-items:flex-end;pointer-events:none}
+.vp-tr>*{pointer-events:auto}
 
-  #hint{position:fixed;right:16px;bottom:14px;z-index:8;font-size:11px;color:#4b525c;
-    text-align:right;line-height:1.75}
-  #error{position:fixed;inset:0;display:none;place-items:center;color:#c98a72;z-index:20;
-    font-size:13px;background:rgba(10,11,13,.96);padding:40px;text-align:center}
-  #empty{position:fixed;inset:0;display:none;place-items:center;z-index:5;pointer-events:none;
-    color:#6b7178;font-size:13.5px;text-align:center;line-height:2}
-  #empty.show{display:grid}
+.vp-live{display:flex;align-items:center;gap:8px;font:9.5px var(--mono);
+  letter-spacing:.2em;color:#7f9dbe;pointer-events:none}
+.vp-live i{width:5px;height:5px;border-radius:50%;background:#5ee6ff;
+  box-shadow:0 0 8px rgba(94,230,255,.85);animation:sea-blink 2.4s infinite}
+.vp-live b{font-size:8px;font-weight:500;letter-spacing:.14em;color:#5ee6ff;
+  padding:1px 6px;border-radius:3px;border:1px solid rgba(94,230,255,.32);
+  background:rgba(94,230,255,.10)}
+@keyframes sea-blink{50%{opacity:.3}}
 
-  /* 关系图例与背景开关。
-     语义色沿用矛盾核验页（纸感那一屏）的 --bad / --ochre，
-     但星海是近黑底，纸面上的暗红 #a8443a / 赭 #a8632f 放上去会糊成一团，
-     所以只提亮不明换色相（红仍是那个红、赭仍是那个赭）。 */
-  .rel{display:flex;align-items:center;gap:9px;padding:3.5px 0;font-size:11.5px;color:#a8afb9}
-  .rel i{flex:none;width:26px;height:0;border-top-style:solid;border-top-width:2px}
-  .rel i.dash{border-top-style:dashed}
-  .rel i.thin{border-top-width:1px}
-  .rel .n{margin-left:auto;font-size:10.5px;color:#6b7178;font-variant-numeric:tabular-nums}
-  .rel-note{font-size:10.5px;color:#6b7178;line-height:1.65;margin-top:8px;
-    border-top:1px solid rgba(255,255,255,.055);padding-top:8px}
-  .sw{flex:none;width:26px;height:14px;border-radius:8px;background:rgba(255,255,255,.09);
-    position:relative;transition:background .15s}
-  .sw::after{content:'';position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:50%;
-    background:#8b929c;transition:left .15s,background .15s}
-  .sw.on{background:rgba(200,160,90,.42)}
-  .sw.on::after{left:14px;background:#e3a662}
-  .reltag{display:inline-block;font-size:10.5px;padding:2px 8px;border-radius:6px;margin-bottom:10px;
-    border:1px solid currentColor}
-  .pair{display:grid;grid-template-columns:1fr;gap:6px;padding:10px 0;margin-bottom:10px;
-    border-top:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05)}
-  .pair .side{font-size:12px;color:#a4abb6;line-height:1.6}
-  .pair .end{font-size:10px;color:#6b7178;letter-spacing:.06em;margin-bottom:2px}
+/* 模式切换 + 筛选开关：一排贴在 LIVE 下面 */
+.vp-tlrow{display:flex;gap:6px;align-items:center}
+.vp-modes{display:flex;gap:2px;padding:3px;border-radius:8px;background:rgba(8,14,28,.74);
+  border:1px solid rgba(110,160,235,.16);backdrop-filter:blur(12px)}
+.mode{font:10px var(--mono);letter-spacing:.04em;padding:5px 9px;border-radius:6px;cursor:pointer;
+  color:#7a93b2;background:transparent;border:none;transition:all .16s;white-space:nowrap}
+.mode:hover{color:#cfe0f2}
+.mode.on{background:rgba(94,230,255,.13);color:#7ceaff;box-shadow:inset 0 0 0 1px rgba(94,230,255,.28)}
 
-  /* 导航：就地写这一份，不再 import nav.js 的 NAV_CSS_DARK。
-     原因是热重载只认页面自己的 mtime——页面内部静态 import 的模块会被缓存成旧实例，
-     改 nav.js 的心海导航样式必须重启宿主才生效。样式跟着页面文件走，
-     改完刷新即见；nav.js 就只管导航项与渲染（一份地图，一套 DOM）。 */
-  .nav{display:flex;gap:2px;flex-wrap:wrap;align-items:center;flex:none}
-  .navlink{font-size:11.5px;letter-spacing:.01em;padding:5px 10px;border:1px solid transparent;
-    border-radius:6px;background:transparent;color:#79818d;text-decoration:none;
-    transition:color .14s,background .14s,border-color .14s;white-space:nowrap}
-  .navlink:hover{border-color:#232831;background:#181c22;color:#e9ebee;text-decoration:none}
-  .navlink.active{border-color:rgba(227,166,98,.34);background:rgba(227,166,98,.10);
-    color:#e3a662;font-weight:560}
-  .navlink.active:hover{color:#e3a662}
+/* 视窗里的按钮：深底窄边，跟白昼外壳的 .btn 是两套，别互相污染 */
+.btn{font:10px var(--mono);letter-spacing:.04em;padding:6px 11px;border-radius:7px;cursor:pointer;
+  border:1px solid rgba(110,160,235,.22);background:rgba(8,14,28,.74);color:#8fa9c6;
+  transition:all .16s;backdrop-filter:blur(12px)}
+.btn:hover{color:#bfe6ff;border-color:rgba(94,230,255,.45);background:rgba(94,230,255,.08)}
+.btn.on{color:#7ceaff;border-color:rgba(94,230,255,.52);background:rgba(94,230,255,.12)}
+.vp-actions{display:flex;gap:6px}
+.vp-depth{font:8px var(--mono);letter-spacing:.18em;color:#546e8c;text-align:right;line-height:1.4}
+.vp-depth b{display:block;font-size:13px;font-weight:500;letter-spacing:0;color:#8fa9c6;margin-top:2px}
+
+/* 筛选面板：默认收起，点「筛选」才从左滑出——默认视图要干净 */
+#side{position:absolute;top:96px;left:17px;bottom:52px;width:200px;z-index:4;
+  display:flex;flex-direction:column;gap:9px;overflow-y:auto;padding-right:2px;
+  transform:translateX(-124%);opacity:0;pointer-events:none;
+  transition:transform .26s var(--ease-out),opacity .2s}
+#side.open{transform:none;opacity:1;pointer-events:auto}
+#side::-webkit-scrollbar{width:4px}
+#side::-webkit-scrollbar-thumb{background:rgba(120,170,255,.2);border-radius:2px}
+.card{padding:11px 12px;border-radius:9px;background:rgba(7,12,24,.86);
+  border:1px solid rgba(110,160,235,.16);backdrop-filter:blur(14px)}
+.card h3{margin:0 0 7px;font:8.5px var(--mono);letter-spacing:.18em;text-transform:uppercase;color:#4c6684}
+.item{display:flex;align-items:center;gap:8px;padding:3.5px 0;cursor:pointer;
+  font-size:11px;color:#8aa9c4;transition:color .13s;user-select:none}
+.item:hover{color:#c6d8ea}
+.item.off{opacity:.32}
+.dot{width:7px;height:7px;border-radius:50%;flex:none}
+.item .n{margin-left:auto;font:9.5px var(--mono);color:#4c6684;font-variant-numeric:tabular-nums}
+#q{width:100%;padding:6px 8px;border-radius:6px;font-size:11px;font-family:var(--mono);
+  border:1px solid rgba(110,160,235,.18);background:rgba(4,9,20,.72);color:#c6d8ea;outline:none}
+#q:focus{border-color:rgba(94,230,255,.5)}
+#q::placeholder{color:#3c5a78}
+
+/* 右下 NODE INSPECTOR：空态给说明，选中后原地变成 FOCUS 卡片。
+   高度一律按内容自适应（max-height 兜底），不写 top——
+   参考视频里聚焦态的卡片很矮，只讲「这是哪一条、分类、重要度、几条关联」，
+   完整正文收进折叠区。面板一旦撑满右半屏，它挡住的正好是你在看的那片关系。 */
+.vp-inspector{position:absolute;right:17px;bottom:44px;width:264px;max-height:calc(100% - 110px);
+  display:flex;flex-direction:column;padding:12px 14px;border-radius:11px;
+  background:rgba(7,12,24,.86);border:1px solid rgba(110,160,235,.18);
+  backdrop-filter:blur(16px);box-shadow:0 18px 44px -20px rgba(3,7,16,.9);
+  transition:border-color .2s,box-shadow .2s}
+.vp-inspector.show{border-color:rgba(94,230,255,.34);
+  box-shadow:0 0 0 1px rgba(94,230,255,.10),0 22px 52px -22px rgba(3,7,16,.95)}
+.insp-k{font:8.5px var(--mono);letter-spacing:.2em;color:#5e7a9c;margin-bottom:8px}
+.insp-empty p{margin:0;font-size:11px;line-height:1.8;color:#7f9dbe}
+.insp-meta{display:flex;justify-content:space-between;margin-top:11px;padding-top:9px;
+  border-top:1px solid rgba(110,160,235,.12);font:8px var(--mono);letter-spacing:.12em;color:#3f5875}
+.vp-inspector.show .insp-empty{display:none}
+
+/* 聚焦卡片头：FOCUS · mem_xxxxxx（跟参考视频右下那块一致） */
+.focus-head{display:flex;align-items:center;gap:6px;margin-bottom:8px;
+  font:8.5px var(--mono);letter-spacing:.18em;color:#5e7a9c}
+.focus-head b{color:#7ceaff;font-weight:500;letter-spacing:.06em}
+/* 一行元信息替代原来的一整列 key-value 表：重要度 · 关联数 · 类型 */
+.focus-meta{margin-top:9px;padding-top:9px;border-top:1px solid rgba(110,160,235,.12);
+  font:9.5px var(--mono);color:#7b93b0;letter-spacing:.04em;line-height:1.7}
+.focus-meta b{color:#a8c6e2;font-weight:500}
+.focus-meta i{font-style:normal;color:#3f5875;margin:0 6px}
+
+#detail{display:none;flex-direction:column;min-height:0;overflow-y:auto;overflow-x:hidden;position:relative}
+.vp-inspector.show #detail{display:flex}
+#detail::-webkit-scrollbar{width:4px}
+#detail::-webkit-scrollbar-thumb{background:rgba(120,170,255,.2);border-radius:2px}
+/* 关闭键绝对定位在面板右上：v3 里 #detail 是 flex 容器，float:right 在 flex 里不生效，
+   v2 那套 float 写法会让 ✕ 掉到左上角去。 */
+#detail .x{position:absolute;top:-2px;right:-2px;cursor:pointer;color:#4c6684;
+  font-size:14px;line-height:1;padding:1px 4px}
+#detail .x:hover{color:#c6d8ea}
+#detail h2{font-size:12.5px;font-weight:500;margin:0 0 8px;color:#d9e6f2;line-height:1.5;padding-right:22px}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+.chip{font:9.5px var(--mono);padding:2px 7px;border-radius:4px;background:rgba(120,170,255,.13);color:#8aa9c4}
+.chip.warn{background:rgba(224,106,92,.16);color:#e08a7a}
+.body{font-size:11.5px;color:#a9b8cd;line-height:1.75;white-space:pre-wrap;word-break:break-word;
+  max-height:210px;overflow-y:auto;overflow-x:hidden;margin-bottom:10px;min-width:0}
+.row{display:grid;grid-template-columns:58px minmax(0,1fr);gap:8px;padding:3.5px 0;
+  border-bottom:1px solid rgba(110,160,235,.08);font-size:11px}
+.row:last-child{border-bottom:none}
+.k{color:#4c6684}
+.v{color:#a9b8cd;font-family:var(--mono);word-break:break-all;min-width:0}
+/* 详情里的按钮行：跟在详情后面，不再浮在页面底部中央 */
+#ctx{display:none;flex-wrap:wrap;gap:6px;margin-top:10px;padding-top:10px;
+  border-top:1px solid rgba(110,160,235,.12)}
+#ctx.show{display:flex}
+#tip{position:absolute;z-index:6;pointer-events:none;display:none;max-width:266px;
+  padding:7px 10px;border-radius:7px;font-size:11px;line-height:1.55;color:#c6d8ea;
+  background:rgba(5,12,26,.97);border:1px solid rgba(110,160,235,.24);
+  box-shadow:0 10px 28px -8px rgba(3,7,16,.9)}
+#tip.show{display:block}
+#tip b{color:#e6edf7}
+#error{position:absolute;inset:0;display:none;place-items:center;color:#e08a7a;z-index:7;
+  font-size:12px;background:rgba(4,6,12,.94);padding:40px;text-align:center}
+#empty{position:absolute;inset:0;display:none;place-items:center;z-index:5;pointer-events:none;
+  color:#4c6684;font-size:13px;text-align:center;line-height:2}
+#empty.show{display:grid}
+
+/* 左下角图例 + 底部中央的计数行 + 右下角操作提示 */
+.vp-legend{position:absolute;left:17px;bottom:46px;display:flex;flex-direction:column;gap:2px;
+  font:9px var(--mono);color:#6b85a4}
+.vp-core{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);text-align:center;
+  pointer-events:none;white-space:nowrap;padding:5px 18px;
+  background:radial-gradient(ellipse 50% 110% at 50% 50%,rgba(4,7,14,.78),transparent 74%);
+  text-shadow:0 1px 8px #04060c,0 0 3px #04060c}
+.vp-core-k{font:8px var(--mono);letter-spacing:.34em;color:#4a6788}
+.vp-core-v{font:8.5px var(--mono);letter-spacing:.12em;color:#6d8bab;margin-top:3px}
+.vp-core-v b{color:#bcd8f0;font-weight:500}
+.vp-hint{position:absolute;right:13px;bottom:10px;max-width:340px;text-align:right;
+  font:7.5px var(--mono);letter-spacing:.05em;color:#44618a;line-height:1.8;pointer-events:none;
+  padding:5px 8px;border-radius:6px;
+  background:radial-gradient(ellipse 70% 120% at 80% 60%,rgba(4,7,14,.72),transparent 78%);
+  text-shadow:0 1px 6px #04060c}
+
+/* 图例 / 背景开关 / 关系标签：结构不动，只是从左侧栏搬到了视窗左下角 */
+.rel{display:flex;align-items:center;gap:8px;padding:2px 0;font-size:9.5px;color:#7b93b0}
+.rel i{flex:none;width:20px;height:0;border-top-style:solid;border-top-width:2px}
+.rel i.dash{border-top-style:dashed}
+.rel i.thin{border-top-width:1px}
+.rel .n{margin-left:auto;font:9px var(--mono);color:#4c6684;font-variant-numeric:tabular-nums}
+.rel-note{font-size:9.5px;color:#4c6684;line-height:1.65;margin-top:7px;
+  border-top:1px solid rgba(110,160,235,.1);padding-top:7px}
+.sw{flex:none;width:24px;height:13px;border-radius:7px;background:rgba(110,160,235,.16);
+  position:relative;transition:background .15s}
+.sw::after{content:'';position:absolute;top:2px;left:2px;width:9px;height:9px;border-radius:50%;
+  background:#7e97b4;transition:left .15s,background .15s}
+.sw.on{background:rgba(94,230,255,.42)}
+.sw.on::after{left:13px;background:#5ee6ff}
+.reltag{display:inline-block;font:9.5px var(--mono);padding:2px 7px;border-radius:4px;margin-bottom:9px;
+  border:1px solid currentColor}
+.pair{display:grid;grid-template-columns:1fr;gap:6px;padding:9px 0;margin-bottom:9px;
+  border-top:1px solid rgba(110,160,235,.1);border-bottom:1px solid rgba(110,160,235,.1)}
+.pair .side{font-size:11px;color:#a9b8cd;line-height:1.6}
+.pair .end{font-size:9px;color:#4c6684;letter-spacing:.06em;margin-bottom:2px}
+
+/* 视窗下方的说明段已在 v3.1 撤掉：内容跟标题右侧的 sub 重复，
+   而它占的高度正是视窗需要的那一档 */
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;
+    transition-duration:.01ms!important}
+  .vp-live i{animation:none}
+}
+@media(max-width:1024px){
+  .viewport{min-height:540px}
+  .vp-inspector{width:262px}
+}
+@media(max-width:900px){
+  #side{display:none}
+  .vp-inspector{width:min(280px,calc(100% - 34px))}
+  .vp-legend{display:none}
+  .vp-core{display:none}
+  .vp-hint{display:none}
+}
 </style>
 </head>
-<body>
-<canvas id="sea"></canvas>
+<body class="sea-page">
+<div class="wrap wrap--wide">
+  ${renderPageHead({
+    active: 'sea',
+    title: '心海',
+    sub: '把全库记忆映射成可探索的三维神经网络：位置是语义簇，连线是真实关系边。'
+  })}
 
-<div id="bar">
-  <h1>心海</h1>
-  <div class="modes" id="modes">
-    <button class="mode on" data-mode="type">类型</button>
-    <button class="mode" data-mode="weight">重要度</button>
-    <button class="mode" data-mode="time">时间</button>
-    <button class="mode" data-mode="origin">来源</button>
+  <div class="stats stats--sea">
+    <div class="stat"><span class="stat-k"><i>NEURONS</i>/ 神经节点</span><span class="stat-v num" id="statNodes">—</span></div>
+    <div class="stat"><span class="stat-k"><i>SYNAPSES</i>/ 突触连接</span><span class="stat-v num" id="statEdges">—</span></div>
+    <div class="stat"><span class="stat-k"><i>CLUSTERS</i>/ 语义簇</span><span class="stat-v num" id="statClusters">—</span></div>
+    <div class="stat"><span class="stat-k"><i>FIELD STATUS</i>/ 网络状态</span><span class="stat-v ok" id="statStatus">同步中</span></div>
   </div>
-  <span id="count">—</span>
-  <button class="btn" id="btnRecent">只看最近</button>
-  <button class="btn" id="btnReset">复位</button>
-  ${renderNav({ active: 'sea' })}
-</div>
 
-<div id="side">
-  <div class="card">
-    <h3>关系</h3>
-    <div id="legend"></div>
-    <div class="item" id="bgToggle">
-      <span class="sw" id="bgSw"></span>
-      <span>同簇相邻（背景）</span>
-      <span class="n" id="bgCount">—</span>
+  <section class="viewport" id="viewport" aria-label="三维记忆海">
+    <canvas id="sea"></canvas>
+
+    <div class="vp-hud">
+      <div class="vp-tl">
+        <div class="vp-live"><i></i><span>NEURAL FIELD</span><b>LIVE</b></div>
+        <div class="vp-tlrow">
+          <div class="vp-modes" id="modes">
+            <button class="mode on" data-mode="type">类型</button>
+            <button class="mode" data-mode="weight">重要度</button>
+            <button class="mode" data-mode="time">时间</button>
+            <button class="mode" data-mode="origin">来源</button>
+          </div>
+          <button class="btn" id="btnFilter" aria-expanded="false">筛选</button>
+        </div>
+      </div>
+
+      <div class="vp-tr">
+        <div class="vp-depth">FIELD DEPTH<b id="statDepth">1.00×</b></div>
+        <div class="vp-actions">
+          <button class="btn" id="btnSpin">自动旋转</button>
+          <button class="btn" id="btnReset">重置视角</button>
+        </div>
+      </div>
+
+      <aside id="side">
+        <div class="card">
+          <h3>关系</h3>
+          <div class="item" id="bgToggle">
+            <span class="sw" id="bgSw"></span>
+            <span>同簇相邻（背景）</span>
+            <span class="n" id="bgCount">—</span>
+          </div>
+          <div class="rel-note" id="relNote"></div>
+        </div>
+        <div class="card">
+          <h3>类型</h3>
+          <div id="filterType"></div>
+        </div>
+        <div class="card">
+          <h3>来源</h3>
+          <div id="filterOrigin"></div>
+        </div>
+        <div class="card">
+          <h3>检索</h3>
+          <input id="q" placeholder="摘要关键词" autocomplete="off" spellcheck="false">
+          <button class="btn" id="btnRecent" style="margin-top:8px;width:100%">只看最近</button>
+        </div>
+      </aside>
+
+      <div class="vp-legend" id="legend"></div>
+
+      <div class="vp-core">
+        <div class="vp-core-k" id="coreK">SEMANTIC CORE</div>
+        <div class="vp-core-v" id="coreV"><b id="cntActive">—</b> ACTIVE NODES / <b id="cntClusters">—</b> CLUSTERS</div>
+      </div>
+
+      <aside class="vp-inspector" id="inspector">
+        <div class="insp-empty" id="inspEmpty">
+          <div class="insp-k">NODE INSPECTOR</div>
+          <p>点击任意神经节点，放大并查看它的直接关联；点空白处退出聚焦。</p>
+          <div class="insp-meta"><span>3D PROJECTION</span><span>REALTIME</span></div>
+        </div>
+        <div id="detail"></div>
+        <div id="ctx"></div>
+      </aside>
+
+      <div class="vp-hint">DRAG TO ROTATE · SCROLL TO ZOOM · CLICK NODE TO FOCUS · EMPTY SPACE TO EXIT</div>
     </div>
-    <div class="rel-note" id="relNote"></div>
-  </div>
-  <div class="card">
-    <h3>类型</h3>
-    <div id="filterType"></div>
-  </div>
-  <div class="card">
-    <h3>来源</h3>
-    <div id="filterOrigin"></div>
-  </div>
-  <div class="card">
-    <h3>搜索</h3>
-    <input id="q" placeholder="摘要关键词" autocomplete="off" spellcheck="false">
-  </div>
+
+    <div id="tip"></div>
+    <div id="error"></div>
+    <div id="empty">还没有记忆。<br>让外置大脑记点东西，心海就会亮起来。</div>
+  </section>
 </div>
-
-<div id="detail"></div>
-<div id="ctx"></div>
-<div id="tip"></div>
-<div id="hint">滚轮推拉 · 左键拖旋转 · 右键平移 · 点星看原文 · 点边看关系</div>
-<div id="error"></div>
-<div id="empty">还没有记忆。<br>让外置大脑记点东西，心海就会亮起来。</div>
-
 <script>
 (() => {
   const canvas = document.getElementById('sea')
   const g = canvas.getContext('2d')
-  const elCount = document.getElementById('count')
+  const viewport = document.getElementById('viewport')
   const elDetail = document.getElementById('detail')
   const elCtx = document.getElementById('ctx')
   const elTip = document.getElementById('tip')
   const elError = document.getElementById('error')
   const elEmpty = document.getElementById('empty')
+  const elInspector = document.getElementById('inspector')
+  const elDepth = document.getElementById('statDepth')
+  const elSide = document.getElementById('side')
+
+  /**
+   * 视窗逻辑尺寸（CSS 像素）。
+   *
+   * v2 是全屏画布，投影中心直接用 innerWidth/2、innerHeight/2；v3 画布收进了卡片，
+   * 中心点必须是**视窗自己的**中心。这两个变量每帧绘制、拾取、浮窗定位都用它，
+   * 一处真源——不要再在任何地方直接摸 innerWidth。
+   */
+  let VW = 1
+  let VH = 1
 
   const KIND = {
-    semantic:     { label: '事实', color: [ 96, 214, 186] },
-    profile:      { label: '偏好', color: [126, 206, 255] },
-    commitment:   { label: '约定', color: [255, 198, 118] },
-    episode:      { label: '经历', color: [138, 172, 255] },
-    skill:        { label: '方法', color: [186, 150, 255] },
-    self:         { label: '自省', color: [255, 142, 190] },
-    relationship: { label: '关系', color: [255, 170, 140] },
-    boundary:     { label: '边界', color: [150, 158, 176] },
+    semantic:     { label: '事实', color: [110, 168, 255] },
+    profile:      { label: '偏好', color: [ 89, 227, 255] },
+    commitment:   { label: '约定', color: [139, 124, 246] },
+    episode:      { label: '经历', color: [180, 140, 242] },
+    skill:        { label: '方法', color: [ 76, 195, 230] },
+    self:         { label: '自省', color: [169, 184, 255] },
+    relationship: { label: '关系', color: [209, 143, 255] },
+    boundary:     { label: '边界', color: [140, 160, 200] },
   }
   const ORIGIN = {
-    dsh:     { label: '手记', color: [255, 210, 130] },
-    engram:  { label: '迁入', color: [130, 175, 235] },
-    brain:   { label: '自省', color: [186, 150, 255] },
-    lingshu: { label: '灵枢', color: [150, 200, 180] },
+    dsh:     { label: '手记', color: [ 89, 227, 255] },
+    engram:  { label: '迁入', color: [110, 168, 255] },
+    brain:   { label: '自省', color: [180, 140, 242] },
+    lingshu: { label: '灵枢', color: [139, 124, 246] },
   }
-  const FALLBACK = [140, 160, 190]
+  const FALLBACK = [140, 160, 200]
+  /**
+   * 类型 → 英文代号。
+   *
+   * 参考视频里节点标签是「mem_e8b9b9 · EMOTION」这种「短 id + 全大写类别」的形态：
+   * 信息量刚好够认出「这是哪条、属于哪类」，又不至于像摘要那样占掉半个屏幕。
+   * 这里给八个类型各配一个代号，标签用它；中文名仍用于簇标签（事实 / 偏好 …）。
+   */
+  const TYPE_CODE = {
+    semantic: 'SEMANTIC',
+    profile: 'PREFERENCE',
+    commitment: 'COMMITMENT',
+    episode: 'EPISODE',
+    skill: 'SKILL',
+    self: 'SELF',
+    relationship: 'RELATIONSHIP',
+    boundary: 'BOUNDARY',
+  }
+  const codeOfType = (t) => TYPE_CODE[t] || String(t || 'other').toUpperCase()
+  /** 节点短 id：「mem_e8b9b9」那种长度，够用且要能对上详情面板里的完整 ID。 */
+  const shortId = (id) => {
+    const s = String(id || '')
+    return s.length > 11 ? s.slice(0, 11) : s
+  }
   // ── 关系边的语义表 ───────────────────────────────────────────
   // kind 只有这五种：四种真实关系（supersedes / contradicts / supports / refines）
   // 加一种背景近似连线（topic）。线的颜色、线型、粗细、透明度全从这里取，
@@ -316,6 +867,10 @@ export function renderSeaPage() {
   let lastPos = new Map()
   let dragging = null
   let dragMoved = false
+  // 自动旋转：默认关。开着的时候拖拽会暂停推 yaw（拖拽是直接操纵，不能被抢）
+  let autoSpin = false
+  // FIELD DEPTH 显示的上一帧文本：只在数字真的变了才写 DOM
+  let lastDepthText = ''
   let hovered = null
   let selected = null
   let recentOnly = false
@@ -343,11 +898,16 @@ export function renderSeaPage() {
 
   function resize() {
     const dpr = Math.min(2, window.devicePixelRatio || 1)
-    canvas.width = Math.floor(innerWidth * dpr)
-    canvas.height = Math.floor(innerHeight * dpr)
-    canvas.style.width = innerWidth + 'px'
-    canvas.style.height = innerHeight + 'px'
+    const rect = viewport.getBoundingClientRect()
+    VW = Math.max(1, Math.round(rect.width))
+    VH = Math.max(1, Math.round(rect.height))
+    canvas.width = Math.floor(VW * dpr)
+    canvas.height = Math.floor(VH * dpr)
+    canvas.style.width = VW + 'px'
+    canvas.style.height = VH + 'px'
     g.setTransform(dpr, 0, 0, dpr, 0, 0)
+    // 只改画布物理尺寸：点的世界坐标与相机都不随视窗变化，
+    // 投影中心在 project() 里读 VW/VH，下一帧自然就对齐了。
   }
 
   // 类型模式：簇 = 记忆类型，斐波那契球面铺开
@@ -440,14 +1000,52 @@ export function renderSeaPage() {
     elError.style.display = 'none'
   }
 
+  /** 参考图里小数字补零（07 CLUSTERS）——纯排版，不影响数值语义。 */
+  const pad2 = (n) => (n < 10 ? '0' + n : String(n))
+
+  /** 「语义簇」跟着当前视角的分类维度走：类型模式看类型，来源模式看来源。 */
+  function clusterCount() {
+    const set = new Set()
+    for (const p of points) set.add(mode === 'origin' ? (p.origin || 'other') : (p.type || 'other'))
+    return set.size
+  }
+
   function refreshStats() {
     // 「关联」只数真实关系边。背景边数是另一个数字，挂在开关那一行——
     // 把背景线算进关联合计，等于把「没有关系」报成「有关系」。
-    elCount.innerHTML = '<b>' + points.length + '</b> 颗星 · <b>' + edges.length
-      + '</b> 条真实关联 · 当前 <b>' + visiblePoints().length + '</b> 可见'
     updateLegendCounts()
     const elBgCount = document.getElementById('bgCount')
     if (elBgCount) elBgCount.textContent = showBackground ? String(backgroundEdges.length) : '关'
+    const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v }
+    // 统计条三格 + 底部状态行，数字同源，不各算各的
+    setText('statNodes', String(points.length))
+    setText('statEdges', String(edges.length))
+    setText('statClusters', pad2(clusterCount()))
+    updateCoreRow()
+  }
+
+  /**
+   * 底部状态行：全景说「这台仪器里有多少东西」，聚焦说「你正看着哪一团关系」。
+   * 参考视频就是这两种口径在切换（SEMANTIC CORE ↔ ASSOCIATION FOCUS）。
+   */
+  function updateCoreRow() {
+    const k = document.getElementById('coreK')
+    const v = document.getElementById('coreV')
+    if (!k || !v) return
+    if (focusMode) {
+      // 链数 = 落在聚焦范围内的真实关系边；节点数 = 此刻真正可见的节点
+      let chains = 0
+      for (const e of edges) {
+        if (focusMode.keep.has(e.a) && focusMode.keep.has(e.b)) chains += 1
+      }
+      k.textContent = 'ASSOCIATION FOCUS'
+      v.innerHTML = '<b>' + chains + '</b> CHAINS · <b>' + visiblePoints().length
+        + '</b> NODES · PRESS ESC OR SPACE TO EXIT'
+    } else {
+      k.textContent = 'SEMANTIC CORE'
+      v.innerHTML = '<b>' + visiblePoints().length + '</b> ACTIVE NODES / <b>'
+        + pad2(clusterCount()) + '</b> CLUSTERS'
+    }
   }
 
   function buildFilters() {
@@ -594,6 +1192,15 @@ export function renderSeaPage() {
     return colorOfType(p.type)
   }
 
+  /** 统计条第四格：数据链路状态。成功就是「同步中」，失败说「离线」。 */
+  function setFieldStatus(ok) {
+    const el = document.getElementById('statStatus')
+    if (!el) return
+    el.textContent = ok ? '同步中' : '离线'
+    el.classList.toggle('ok', ok)
+    el.classList.toggle('bad', !ok)
+  }
+
   async function load() {
     try {
       const res = await fetch('/dsh-brain/api/scene', { credentials: 'same-origin' })
@@ -601,9 +1208,11 @@ export function renderSeaPage() {
       if (!data.ok) throw new Error(data.message || '接口返回失败')
       ingest(data)
       recalTimeRange()
+      setFieldStatus(true)
     } catch (error) {
       elError.textContent = '读不到心海数据：' + error.message
       elError.style.display = 'grid'
+      setFieldStatus(false)
     }
   }
 
@@ -620,32 +1229,155 @@ export function renderSeaPage() {
     const z2 = wy * sp + z1 * cp
     const depth = cam.dist + z2
     const f = FOCAL / Math.max(140, depth)
-    return { x: innerWidth / 2 + x1 * f, y: innerHeight / 2 + y1 * f, f, depth }
+    return { x: VW / 2 + x1 * f, y: VH / 2 + y1 * f, f, depth }
   }
 
-  /** 画一条边。线型由 kind 决定；solid=true 用于给强边铺底层光晕（忽略虚线）。 */
-  function strokeSeg(a, b, st, alpha, lw, solid) {
+  /**
+   * 把鼠标的页面坐标换算成视窗本地坐标。
+   * v2 画布铺满窗口、原点就在 (0,0)，所以拾取直接用 clientX/clientY；
+   * v3 画布在卡片里，必须减掉卡片在页面里的偏移，否则点哪都偏一个 header 的高度。
+   */
+  function localXY(e) {
+    const r = canvas.getBoundingClientRect()
+    return { x: e.clientX - r.left, y: e.clientY - r.top }
+  }
+
+  /**
+   * 画一条边。
+   *
+   * v3.2 起从直线改成**二次贝塞尔弧线**：参考视频里的连线是微微弯的，
+   * 直线排在一起像电路板走线，弧线才像神经纤维。
+   *
+   * 弯曲量取两点距离的 6%，最大 22px（长线不至于弯成弓）；
+   * 弯向由这条边的 key 哈希决定——同一对点永远弯同一边，不会每帧翻面。
+   *
+   * 拾取仍然用 lastEdgeSegs 里的端点做直线近似：弯曲最多二十来像素，
+   * 而拾取容差本来就有 8px，加上「点到线段」取最近的逻辑，命中不受影响。
+   */
+  function strokeSeg(a, b, st, alpha, lw, solid, key) {
+    const dx = b.x - a.x
+    const dy = b.y - a.y
+    const len = Math.hypot(dx, dy) || 1
+    const sign = key && hash(key) % 2 === 1 ? -1 : 1
+    const bend = Math.min(22, len * 0.06) * sign
+    const mx = (a.x + b.x) / 2 - (dy / len) * bend
+    const my = (a.y + b.y) / 2 + (dx / len) * bend
     g.save()
     g.lineWidth = Math.max(0.5, lw)
     g.setLineDash(solid ? [] : (st.dash || []))
     g.strokeStyle = 'rgba(' + st.color.join(',') + ',' + Math.max(0, Math.min(1, alpha)).toFixed(3) + ')'
     g.beginPath()
     g.moveTo(a.x, a.y)
-    g.lineTo(b.x, b.y)
+    g.quadraticCurveTo(mx, my, b.x, b.y)
     g.stroke()
     g.restore()
   }
 
-  function frame(t) {
-    stepCam(t)
-    g.clearRect(0, 0, innerWidth, innerHeight)
+  /**
+   * 簇核心：参考图里那些带环的大节点（PROJECT 34 / SEMANTIC CORE）。
+   *
+   * 簇不是额外的数据实体，它就是「同类型节点在屏幕上的质心」。在质心画一枚环 +
+   * 名称 + 计数，读法是「这一团是什么、有几个」。点击拾取仍然只认真实记忆点，
+   * 不认这枚环——环是标尺，不是可选中的对象。
+   *
+   * 为什么画在节点之后：环要亮在星点上面。画在节点之前，密集的星会把虚线环切断，
+   * 看着像「环坏了」而不是「环在后面」。
+   */
+  function drawClusters(list, pos) {
+    // 时间模式没有簇；聚焦态也不需要——那一刻画面只该有焦点和它的邻居，
+    // 再压一层簇环等于在关系图上叠一道无关的标尺。
+    if (mode === 'time' || focusMode) return
+    const groups = new Map()
+    for (const point of list) {
+      const key = point.type || 'other'
+      const p = pos.get(point.id)
+      if (!p) continue
+      const acc = groups.get(key) || { x: 0, y: 0, n: 0, near: 0 }
+      acc.x += p.x; acc.y += p.y; acc.n += 1; acc.near = Math.max(acc.near, p.f)
+      groups.set(key, acc)
+    }
+    // 大簇先画（环大），小簇后画：反过来的话小簇常被大环的弧线压住
+    const clustered = Array.from(groups.entries())
+      .filter((pair) => pair[1].n >= 3)
+      .sort((a, b) => b[1].n - a[1].n)
+    for (const pair of clustered) {
+      const key = pair[0], acc = pair[1]
+      const cx = acc.x / acc.n
+      const cy = acc.y / acc.n
+      const rgb = colorOfType(key).join(',')
+      // 半径跟簇规模走，但压上限——「事实」一百多个点算出来的环会盖住半屏
+      const rr = Math.min(44, 11 + Math.sqrt(acc.n) * 2.5)
+      const fade = Math.min(1, acc.near * 1.5)
+      g.save()
+      // 外环：一圈极淡的虚线，像仪器把这一簇圈出来了
+      g.setLineDash([2, 5])
+      g.lineWidth = 1
+      g.strokeStyle = 'rgba(' + rgb + ',' + (0.15 * fade).toFixed(3) + ')'
+      g.beginPath()
+      g.arc(cx, cy, rr, 0, Math.PI * 2)
+      g.stroke()
+      // 内环：实线短环，标核心
+      g.setLineDash([])
+      g.strokeStyle = 'rgba(' + rgb + ',' + (0.30 * fade).toFixed(3) + ')'
+      g.beginPath()
+      g.arc(cx, cy, rr * 0.40, 0, Math.PI * 2)
+      g.stroke()
+      g.restore()
+      // 核心辉光
+      const core = g.createRadialGradient(cx, cy, 0, cx, cy, 15)
+      core.addColorStop(0, 'rgba(' + rgb + ',' + (0.80 * fade).toFixed(3) + ')')
+      core.addColorStop(0.34, 'rgba(' + rgb + ',' + (0.26 * fade).toFixed(3) + ')')
+      core.addColorStop(1, 'rgba(' + rgb + ',0)')
+      g.fillStyle = core
+      g.beginPath()
+      g.arc(cx, cy, 15, 0, Math.PI * 2)
+      g.fill()
+      // 名称 + 计数（挂在环上方，跟参考图的簇标签同一位置逻辑）
+      // 深底色上的文字一律带一层暗投影：不给的话文字坐在星点里，读不出来
+      g.shadowColor = 'rgba(4,7,14,.95)'
+      g.shadowBlur = 6
+      g.textAlign = 'center'
+      g.font = '600 11.5px system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif'
+      g.fillStyle = 'rgba(' + rgb + ',' + (0.85 * fade).toFixed(3) + ')'
+      g.fillText(labelOfType(key), cx, cy - rr - 12)
+      g.font = '9px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace'
+      g.fillStyle = 'rgba(' + rgb + ',' + (0.55 * fade).toFixed(3) + ')'
+      g.fillText(String(acc.n), cx, cy - rr - 2)
+      g.shadowBlur = 0
+    }
+    g.textAlign = 'left'
+  }
 
-    for (let i = 0; i < 160; i += 1) {
-      const x = (hash('bg' + i) % 1000) / 1000 * innerWidth
-      const y = (hash('bgy' + i) % 1000) / 1000 * innerHeight
-      const a = 0.04 + ((Math.sin(t / 2600 + i) + 1) / 2) * 0.1
-      g.fillStyle = 'rgba(150,180,240,' + a + ')'
+  function frame(t) {
+    // 自动旋转：只推目标值，让 cam 走既有的指数插值——转起来才不顿。
+    if (autoSpin && !dragging) camTarget.yaw += lastDt * 0.00011
+    stepCam(t)
+    // FIELD DEPTH：默认视距与当前视距的比值，1.00× 就是默认视角。
+    // 节流写入——每帧写一次 textContent，等于给 60fps 的渲染循环白加一笔 DOM 开销。
+    if (elDepth) {
+      const dText = (CAM_DEFAULT.dist / cam.dist).toFixed(2) + '×'
+      if (dText !== lastDepthText) { lastDepthText = dText; elDepth.textContent = dText }
+    }
+    g.clearRect(0, 0, VW, VH)
+
+    // ── 星尘：两层。远层多而暗，近层少而亮，给深底一点纵深和质感，
+    //    否则黑底上只剩关系节点，画面是「散点图」而不是「星海」。
+    //    位置全用固定哈希算，不占数组内存。
+    for (let i = 0; i < 260; i += 1) {
+      const x = (hash('bg' + i) % 1000) / 1000 * VW
+      const y = (hash('bgy' + i) % 1000) / 1000 * VH
+      const tw = (Math.sin(t / 2600 + i * 1.7) + 1) / 2
+      g.fillStyle = 'rgba(150,180,240,' + (0.03 + tw * 0.075).toFixed(3) + ')'
       g.fillRect(x, y, 1, 1)
+    }
+    for (let i = 0; i < 54; i += 1) {
+      const x = (hash('nd' + i) % 1000) / 1000 * VW
+      const y = (hash('ndy' + i) % 1000) / 1000 * VH
+      const tw = (Math.sin(t / 1900 + i * 2.3) + 1) / 2
+      g.fillStyle = 'rgba(170,205,255,' + (0.05 + tw * 0.16).toFixed(3) + ')'
+      g.beginPath()
+      g.arc(x, y, 0.8 + tw * 0.7, 0, Math.PI * 2)
+      g.fill()
     }
 
     // 渐显/渐隐：算出哪些点「应该」可见，然后每个点朝目标透明度平滑过渡。
@@ -685,7 +1417,7 @@ export function renderSeaPage() {
         const near = (a.f + b.f) * 0.5
         const hot = hoverEdgeKey === edgeKey(edge) || selectedEdgeKey === edgeKey(edge)
         const alpha = Math.min(0.5, stBg.alpha * Math.min(1, 0.4 + near) * (hot ? 3.2 : 1))
-        strokeSeg(a, b, stBg, alpha, hot ? 1.4 : 0.9)
+        strokeSeg(a, b, stBg, alpha, hot ? 1.4 : 0.9, false, edgeKey(edge))
         lastEdgeSegs.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, edge, kind: 'topic' })
       }
     }
@@ -708,31 +1440,43 @@ export function renderSeaPage() {
         const lw = Math.max(0.9, st.weight * (0.8 + near * 0.9)) * (isHot ? 1.6 : 1)
         // 强边（矛盾/取代）先铺一层更宽更淡的底，在近黑底上有一点光晕；
         // 线型本身仍是虚线/实线，读法是「粗重=要处理、虚线=冲突」
-        if (st.weight >= 0.75) strokeSeg(a, b, st, Math.min(0.4, alpha * 0.3), lw * 3.1, true)
-        strokeSeg(a, b, st, alpha, lw)
+        if (st.weight >= 0.75) strokeSeg(a, b, st, Math.min(0.4, alpha * 0.3), lw * 3.1, true, key)
+        strokeSeg(a, b, st, alpha, lw, false, key)
         lastEdgeSegs.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, edge, kind })
       }
     }
 
-    if (mode !== 'time') {
-      const groups = new Map()
-      for (const point of list) {
-        const key = point.type || 'other'
-        const p = pos.get(point.id)
-        const acc = groups.get(key) || { x: 0, y: 0, n: 0, near: 0 }
-        acc.x += p.x; acc.y += p.y; acc.n += 1; acc.near = Math.max(acc.near, p.f)
-        groups.set(key, acc)
+    // ── 流动光点：沿真实关系边跑的脉冲，表达「这条关系正在被读到」──
+    // 只给强边（矛盾/取代/佐证）加。给弱边也加，画面就成了一片乱飞的萤火，
+    // 反而盖掉「哪两条记忆真的有关」这个唯一要说清的信息。
+    if (motionOn) {
+      for (const kind of REL_DRAW_ORDER) {
+        const st = REL[kind]
+        if (st.weight < 0.5) continue
+        const rgb = st.color.join(',')
+        for (const edge of edges) {
+          if (edge.kind !== kind) continue
+          if (!idx.has(edge.a) || !idx.has(edge.b)) continue
+          const a = pos.get(edge.a)
+          const b = pos.get(edge.b)
+          const len = Math.hypot(b.x - a.x, b.y - a.y)
+          if (len < 36) continue // 太短的线看不出流动，白算一遍渐变
+          const hot = hoverEdgeKey === edgeKey(edge) || selectedEdgeKey === edgeKey(edge)
+          // 每条边的相位固定散开，否则所有光点会同时出发、看着像在闪
+          const phase = (hash(edgeKey(edge)) % 1000) / 1000
+          const tt = (t * 0.00015 + phase) % 1
+          const px = a.x + (b.x - a.x) * tt
+          const py = a.y + (b.y - a.y) * tt
+          const rr = 1.5 + (hot ? 1.3 : 0)
+          const gr = g.createRadialGradient(px, py, 0, px, py, rr * 3.4)
+          gr.addColorStop(0, 'rgba(' + rgb + ',' + (hot ? 0.95 : 0.62).toFixed(2) + ')')
+          gr.addColorStop(1, 'rgba(' + rgb + ',0)')
+          g.fillStyle = gr
+          g.beginPath()
+          g.arc(px, py, rr * 3.4, 0, Math.PI * 2)
+          g.fill()
+        }
       }
-      g.font = '600 12px system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif'
-      g.textAlign = 'center'
-      for (const pair of groups) {
-        const key = pair[0], acc = pair[1]
-        if (acc.n < 3) continue
-        g.globalAlpha = 0.42 * Math.min(1, acc.near * 1.5)
-        g.fillStyle = 'rgb(' + colorOfType(key).join(',') + ')'
-        g.fillText(labelOfType(key), acc.x / acc.n, acc.y / acc.n)
-      }
-      g.globalAlpha = 1
     }
 
     for (const point of order) {
@@ -747,30 +1491,83 @@ export function renderSeaPage() {
       const depthFade = Math.max(0.18, Math.min(1, p.f * 1.55)) * dim * pa
       // 点击后弹一下：pulse 从 1 衰减到 0，半径最多放大 55%
       const pulseK = 1 + (point.pulse || 0) * 0.55
-      const r = Math.max(0.9, point.radius * p.f * 1.5) * pulseK
+      // 本体比 v3.2 小一档（系数 1.5 → 1.15）：参考图的星点本体只有几个像素，
+      // 大面积留给光晕。本体大、光晕小就变成「蓝色圆片」，反过来才是「发光的星」。
+      const r = Math.max(0.9, point.radius * p.f * 1.15) * pulseK
 
       if (point.sources > 0 && r > 2) {
         g.beginPath()
-        g.arc(p.x, p.y, r * 1.95, 0, Math.PI * 2)
-        g.strokeStyle = 'rgba(' + c.join(',') + ',' + (0.1 * depthFade) + ')'
+        g.arc(p.x, p.y, r * 2.1, 0, Math.PI * 2)
+        g.strokeStyle = 'rgba(' + c.join(',') + ',' + (0.14 * depthFade) + ')'
         g.lineWidth = 1
         g.stroke()
       }
 
-      const glow = g.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 3.2)
-      glow.addColorStop(0, 'rgba(' + c.join(',') + ',' + (0.55 * depthFade) + ')')
+      // ── 节点画法 v3.3：白核 + 彩色辉光 ──
+      // 参考图里每颗星都是「中心一个过曝的白点 + 外面一圈彩色辉光」；
+      // 之前是纯色实心圆加一圈淡晕，看着像贴上去的圆片，不像在发光。
+      // 现在分三层：弥散外晕 → 明亮内晕 → 白色核心，全部用 lighter 叠加——
+      // 光与光相遇会变亮（跟真实的光一样），而不是互相盖住。
+      g.save()
+      g.globalCompositeOperation = 'lighter'
+
+      // ① 弥散外晕：范围大、中心淡，负责「光散在空气里」的那层
+      const halo = g.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 8)
+      halo.addColorStop(0, 'rgba(' + c.join(',') + ',' + (0.32 * depthFade).toFixed(3) + ')')
+      halo.addColorStop(0.3, 'rgba(' + c.join(',') + ',' + (0.14 * depthFade).toFixed(3) + ')')
+      halo.addColorStop(1, 'rgba(' + c.join(',') + ',0)')
+      g.fillStyle = halo
+      g.beginPath()
+      g.arc(p.x, p.y, r * 8, 0, Math.PI * 2)
+      g.fill()
+
+      // ② 明亮内晕：把颜色压紧在核心周围一圈
+      const glow = g.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 2.4)
+      glow.addColorStop(0, 'rgba(' + c.join(',') + ',' + (0.95 * depthFade).toFixed(3) + ')')
+      glow.addColorStop(0.46, 'rgba(' + c.join(',') + ',' + (0.42 * depthFade).toFixed(3) + ')')
       glow.addColorStop(1, 'rgba(' + c.join(',') + ',0)')
       g.fillStyle = glow
       g.beginPath()
-      g.arc(p.x, p.y, r * 3.2, 0, Math.PI * 2)
+      g.arc(p.x, p.y, r * 2.4, 0, Math.PI * 2)
       g.fill()
 
-      g.fillStyle = 'rgba(' + c.join(',') + ',' + ((isSel || isHov ? 1 : 0.9) * depthFade) + ')'
+      // ③ 白色核心：星体本身的「过曝点」。往白里提 78%——全白会丢掉类型色，
+      //    提少了又回到「蓝色圆片」，这个比例是两者之间的折中。
+      const hot = [
+        Math.round(c[0] + (255 - c[0]) * 0.68),
+        Math.round(c[1] + (255 - c[1]) * 0.68),
+        Math.round(c[2] + (255 - c[2]) * 0.68),
+      ]
+      const core = g.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 1.15)
+      core.addColorStop(0, 'rgba(255,255,255,' + (0.98 * depthFade).toFixed(3) + ')')
+      core.addColorStop(0.62, 'rgba(' + hot.join(',') + ',' + (0.92 * depthFade).toFixed(3) + ')')
+      core.addColorStop(1, 'rgba(' + c.join(',') + ',0)')
+      g.fillStyle = core
       g.beginPath()
-      g.arc(p.x, p.y, r, 0, Math.PI * 2)
+      g.arc(p.x, p.y, r * 1.15, 0, Math.PI * 2)
       g.fill()
 
-      if (isSel || isHov) {
+      g.restore()
+
+      if (isSel) {
+        // 选中态：三层同心环（参考视频里的靶心形态）。
+        // 外环虚线缓慢自转、中线实线、内环贴着光点——比单圈白线更能表达「锁定了这一颗」。
+        g.save()
+        const spin = (t / 9000) * Math.PI * 2
+        g.beginPath()
+        g.setLineDash([3, 6])
+        g.lineWidth = 1
+        g.strokeStyle = 'rgba(' + c.join(',') + ',.55)'
+        g.arc(p.x, p.y, r * 4.2, spin, spin + Math.PI * 2)
+        g.stroke()
+        g.setLineDash([])
+        g.beginPath()
+        g.lineWidth = 1.4
+        g.strokeStyle = 'rgba(' + c.join(',') + ',.88)'
+        g.arc(p.x, p.y, r * 2.6, 0, Math.PI * 2)
+        g.stroke()
+        g.restore()
+      } else if (isHov) {
         g.beginPath()
         g.arc(p.x, p.y, r * 2.4, 0, Math.PI * 2)
         g.strokeStyle = 'rgba(' + c.join(',') + ',.88)'
@@ -779,44 +1576,68 @@ export function renderSeaPage() {
       }
     }
 
-    // 标签：只画最靠前的几个。
-    // 原来「f > 0.62 就画」在 217 颗星时会糊成一整片——文字互相压住，比不画更糟。
-    // 改成：候选按 f 降序，最多 9 个，且做过重叠剔除（文字块之间有碰撞就跳过）。
-    // 其余靠 hover 浮出摘要，这跟群星「悬停才展开细节」是一个思路。
-    if (!anchor) {
-      const cand = []
-      for (const point of list) {
-        const p = pos.get(point.id)
-        if (p.f > 0.72) cand.push({ point, p })
-      }
-      cand.sort((a, b) => b.p.f - a.p.f)
-      const placed = []
-      let drawn = 0
-      g.font = '11.5px system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif'
-      g.textAlign = 'center'
-      for (const item of cand) {
-        if (drawn >= 9) break
-        const text = item.point.text || ''
-        const label = text.length > 16 ? text.slice(0, 16) + '…' : text
-        const w = g.measureText(label).width
-        const x = item.p.x
-        const y = item.p.y + item.point.radius * item.p.f * 1.5 + 14
-        // 与已画的标签比矩形碰撞（留 4px 余量）
-        let hit = false
-        for (const r2 of placed) {
-          if (Math.abs(x - r2.x) < (w + r2.w) / 2 + 8 && Math.abs(y - r2.y) < 15) { hit = true; break }
-        }
-        if (hit) continue
-        placed.push({ x, y, w })
-        g.globalAlpha = Math.min(0.85, (item.p.f - 0.72) * 4 + 0.35)
-        g.fillStyle = '#b7bdc7'
-        g.fillText(label, x, y)
-        drawn += 1
-      }
-      g.globalAlpha = 1
+    // 簇标记盖在星点之上（见 drawClusters 的注释）
+    drawClusters(list, pos)
+
+    // ── 标签策略（v3.2 按参考视频重做）──
+    // 全景：不画节点级文字。226 个点上面叠几条记忆摘要，既看不清也读不完；
+    //       画面的主角是簇（drawClusters 已经给了「事实 · 182」），具体是谁靠 hover 回答。
+    // 聚焦：给每颗可见节点挂「mem_8d675a · EMOTION」——这时只剩十来颗星，
+    //       标签不会互相压，而「这条是什么、属于哪类」正是这一步唯一要看的信息。
+    if (focusMode) {
+      drawFocusLabels(list, pos)
     }
 
     requestAnimationFrame(frame)
+  }
+
+  /**
+   * 聚焦态的节点标签：「mem_8d675a · EMOTION」。
+   *
+   * 参考视频在聚焦时给每一颗可见节点都挂这种短标签。这里照做，但补了两处：
+   *   1. 纵向避让——十来个标签全往右上角挤时，重叠的往下错开一档；
+   *   2. 焦点那颗加不透明度——一眼能分出「我点的是这颗，其余是它的邻居」。
+   */
+  function drawFocusLabels(list, pos) {
+    g.textAlign = 'left'
+    g.shadowColor = 'rgba(4,7,14,.95)'
+    g.shadowBlur = 6
+    g.font = '600 9.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace'
+    const placed = []
+    // 靠前的先占位，避免远处的标签把近处的挤走
+    const ordered = list.slice().sort((a, b) => {
+      const pa = pos.get(a.id)
+      const pb = pos.get(b.id)
+      return (pb ? pb.f : 0) - (pa ? pa.f : 0)
+    })
+    for (const point of ordered) {
+      const p = pos.get(point.id)
+      if (!p) continue
+      // 正在渐隐的点不打标签：否则切出聚焦的那几帧会留下一串鬼影文字
+      if ((point.a == null ? 1 : point.a) < 0.5) continue
+      const c = colorOf(point)
+      const label = shortId(point.id) + ' · ' + codeOfType(point.type)
+      const w = g.measureText(label).width
+      const x = p.x + 11
+      let y = p.y - 9
+      let guard = 0
+      while (guard < 6) {
+        let hit = false
+        for (const r2 of placed) {
+          if (Math.abs(x - r2.x) < (w + r2.w) / 2 + 10 && Math.abs(y - r2.y) < 12) { hit = true; break }
+        }
+        if (!hit) break
+        y += 13
+        guard += 1
+      }
+      placed.push({ x, y, w })
+      const isAnchor = selected === point.id
+      g.fillStyle = 'rgba(' + c.join(',') + ',' + (isAnchor ? 0.98 : 0.78).toFixed(2) + ')'
+      g.fillText(label, x, y)
+    }
+    // 阴影只给文字用，不留给后面的绘制（会被糊出毛边）
+    g.shadowBlur = 0
+    g.textAlign = 'center'
   }
 
   function pickAt(mx, my) {
@@ -863,8 +1684,8 @@ export function renderSeaPage() {
     meta.textContent = cut(seg.edge.fromSummary, 20) + ' ↔ ' + cut(seg.edge.toSummary, 20)
     elTip.appendChild(meta)
     elTip.classList.add('show')
-    elTip.style.left = Math.min(mx + 14, innerWidth - 300) + 'px'
-    elTip.style.top = Math.min(my + 14, innerHeight - 80) + 'px'
+    elTip.style.left = Math.max(6, Math.min(mx + 14, VW - 296)) + 'px'
+    elTip.style.top = Math.max(6, Math.min(my + 14, VH - 86)) + 'px'
   }
 
   /**
@@ -877,6 +1698,7 @@ export function renderSeaPage() {
     selected = null
     elDetail.textContent = ''
     elDetail.classList.add('show')
+    elInspector.classList.add('show')
 
     const x = document.createElement('span')
     x.className = 'x'; x.textContent = '✕'
@@ -943,6 +1765,7 @@ export function renderSeaPage() {
     selectedEdgeKey = null
     elDetail.classList.remove('show')
     elCtx.classList.remove('show')
+    elInspector.classList.remove('show')
   }
 
   /** 聚焦范围 = 自己 + 真邻居（背景开关打开时再加背景邻居） */
@@ -987,6 +1810,12 @@ export function renderSeaPage() {
    * 用 camTarget 的 yaw/pitch 算：聚焦不改这两项，插值到位后的最终视角就是它们；
    * 拿 cam 当前值算会在动画途中偏掉。dist 不参与——x1=y1=0 时中心与焦距无关。
    */
+  /** 右上那颗按钮的文案跟着状态走：聚焦时它就是「退出聚焦」 */
+  function syncResetLabel() {
+    const btn = document.getElementById('btnReset')
+    if (btn) btn.textContent = focusMode ? '退出聚焦' : '重置视角'
+  }
+
   function enterFocus(id) {
     const keep = keepSetFor(id)
     focusMode = { anchor: id, keep }
@@ -1011,6 +1840,7 @@ export function renderSeaPage() {
       const n = keep.size
       camTarget.dist = n <= 3 ? 520 : (n <= 8 ? 700 : (n <= 20 ? 900 : 1100))
     }
+    syncResetLabel()
     refreshStats()
   }
 
@@ -1024,6 +1854,8 @@ export function renderSeaPage() {
     camTarget = Object.assign({}, CAM_DEFAULT)
     elDetail.classList.remove('show')
     elCtx.classList.remove('show')
+    elInspector.classList.remove('show')
+    syncResetLabel()
     refreshStats()
   }
 
@@ -1037,15 +1869,55 @@ export function renderSeaPage() {
     enterFocus(id)
     elDetail.textContent = ''
     elDetail.classList.add('show')
+    elInspector.classList.add('show')
 
     const x = document.createElement('span')
     x.className = 'x'; x.textContent = '✕'
     x.onclick = () => exitFocus()
     elDetail.appendChild(x)
 
+    // ── 卡片头：FOCUS · mem_xxxxxx ──
+    // 参考视频聚焦时右下就是一块矮卡片，第一行写清「我在看哪一条」。
+    const nb = neighborMap.get(id)
+    const head = document.createElement('div')
+    head.className = 'focus-head'
+    const hk = document.createElement('span')
+    hk.textContent = 'FOCUS'
+    const hsep = document.createElement('i')
+    hsep.textContent = '·'
+    hsep.style.cssText = 'font-style:normal;color:#3f5875'
+    const hid = document.createElement('b')
+    hid.textContent = shortId(p.id)
+    head.appendChild(hk); head.appendChild(hsep); head.appendChild(hid)
+    elDetail.appendChild(head)
+
     const h2 = document.createElement('h2')
     h2.textContent = p.text || '(无摘要)'
     elDetail.appendChild(h2)
+
+    // ── 一行元信息：类型 · 重要度 · 关联数 · 版本 ──
+    // 原来是四行 key-value 表，在聚焦卡片里太吃高度；拍成一行，扫一眼就够。
+    const meta = document.createElement('div')
+    meta.className = 'focus-meta'
+    const seg = (label, value) => {
+      const i = document.createElement('i'); i.textContent = '·'
+      meta.appendChild(i)
+      meta.appendChild(document.createTextNode(label))
+      const b = document.createElement('b'); b.textContent = value
+      meta.appendChild(b)
+    }
+    meta.appendChild(document.createTextNode(labelOfType(p.type)))
+    seg('重要度 ', String(p.weight != null ? p.weight : '—'))
+    seg('关联 ', String(nb ? nb.size : 0))
+    seg('版本 ', 'v' + (p.version || 1))
+    elDetail.appendChild(meta)
+
+    // ── 完整记录：分类/来源/正文/ID/时间，默认收起 ──
+    // 面板一撑满右半屏，挡住的正好是你在看的那片关系，所以默认只给结论。
+    const more = document.createElement('details')
+    const sum = document.createElement('summary')
+    sum.textContent = '完整记录'
+    more.appendChild(sum)
 
     const chips = document.createElement('div')
     chips.className = 'chips'
@@ -1055,11 +1927,9 @@ export function renderSeaPage() {
       c.textContent = txt
       chips.appendChild(c)
     }
-    addChip(labelOfType(p.type))
     if (p.layer) addChip(p.layer)
     addChip(labelOfOrigin(p.origin) + ' 来源', p.origin === 'engram')
     addChip('引用 ' + (p.sources || 0) + ' 处', !(p.sources > 0))
-    const nb = neighborMap.get(id)
     if (nb) addChip('邻居 ' + nb.size)
     // 这颗星身上有几条真实关系、各是什么类型。颜色和画面/图例一致，
     // 读法统一：红=矛盾、赭=取代、灰=佐证/细化。
@@ -1076,18 +1946,14 @@ export function renderSeaPage() {
       rc.textContent = REL[kind].label + ' ' + relCount[kind]
       chips.appendChild(rc)
     }
-    elDetail.appendChild(chips)
+    more.appendChild(chips)
 
     const body = document.createElement('div')
     body.className = 'body'
     body.textContent = p.content || p.text || ''
-    elDetail.appendChild(body)
+    more.appendChild(body)
 
-    const rows = [
-      ['ID', p.id],
-      ['版本', 'v' + (p.version || 1)],
-      ['重要度', String(p.weight != null ? p.weight : '—')],
-    ]
+    const rows = [['ID', p.id]]
     if (p.createdAt) rows.push(['记于', new Date(p.createdAt).toLocaleString('zh-CN')])
     if (p.validFrom || p.validUntil) rows.push(['有效期', (p.validFrom || '…') + ' → ' + (p.validUntil || '…')])
     for (const kv of rows) {
@@ -1096,8 +1962,9 @@ export function renderSeaPage() {
       const kk = document.createElement('div'); kk.className = 'k'; kk.textContent = kv[0]
       const vv = document.createElement('div'); vv.className = 'v'; vv.textContent = kv[1]
       row.appendChild(kk); row.appendChild(vv)
-      elDetail.appendChild(row)
+      more.appendChild(row)
     }
+    elDetail.appendChild(more)
 
     elCtx.textContent = ''
     elCtx.classList.add('show')
@@ -1125,8 +1992,8 @@ export function renderSeaPage() {
     meta.textContent = labelOfType(p.type) + ' · ' + labelOfOrigin(p.origin) + ' · 引用 ' + (p.sources || 0) + ' 处' + (nb ? ' · 邻居 ' + nb.size : '')
     elTip.appendChild(meta)
     elTip.classList.add('show')
-    elTip.style.left = Math.min(mx + 14, innerWidth - 300) + 'px'
-    elTip.style.top = Math.min(my + 14, innerHeight - 80) + 'px'
+    elTip.style.left = Math.max(6, Math.min(mx + 14, VW - 296)) + 'px'
+    elTip.style.top = Math.max(6, Math.min(my + 14, VH - 86)) + 'px'
   }
 
   canvas.addEventListener('mousedown', (e) => {
@@ -1154,24 +2021,27 @@ export function renderSeaPage() {
       elTip.classList.remove('show')
       hoverEdgeKey = null
     } else {
-      const id = pickAt(e.clientX, e.clientY)
+      // 拾取与浮窗都用**视窗本地坐标**：画布不再从页面左上角起算（见 localXY 注释）
+      const at = localXY(e)
+      const id = pickAt(at.x, at.y)
       hovered = id
       // 星优先：落在一颗星上就只讲这颗星，不当成「边」来悬停。
       // 没星才试边——真实关系边就那么几条，悬停要能命中。
-      const seg = id ? null : pickEdge(e.clientX, e.clientY)
+      const seg = id ? null : pickEdge(at.x, at.y)
       hoverEdgeKey = seg ? edgeKey(seg.edge) : null
       canvas.style.cursor = (id || seg) ? 'pointer' : 'grab'
-      if (seg) showEdgeTip(seg, e.clientX, e.clientY)
-      else showTip(id, e.clientX, e.clientY)
+      if (seg) showEdgeTip(seg, at.x, at.y)
+      else showTip(id, at.x, at.y)
     }
   })
   window.addEventListener('mouseup', (e) => {
     canvas.classList.remove('dragging')
     if (dragging && !dragMoved && !dragging.right) {
-      const id = pickAt(e.clientX, e.clientY)
+      const at = localXY(e)
+      const id = pickAt(at.x, at.y)
       if (id) showDetail(id)
       else {
-        const seg = pickEdge(e.clientX, e.clientY)
+        const seg = pickEdge(at.x, at.y)
         // 点边 → 关系面板（类型/原因/两端/建立时间）
         if (seg) showEdgeDetail(seg.edge)
         // 点空白退出聚焦——不然进了局部就没出口了
@@ -1212,7 +2082,37 @@ export function renderSeaPage() {
   const qEl = document.getElementById('q')
   qEl.addEventListener('input', () => { query = qEl.value.trim(); refreshStats() })
 
-  document.getElementById('btnReset').onclick = () => { exitFocus() }
+  // ── 视窗右上两颗按钮 ──
+  const btnSpin = document.getElementById('btnSpin')
+  const btnReset = document.getElementById('btnReset')
+  // 重置视角：退聚焦 + 相机归位，顺手把自动旋转停掉——
+  // 按了「重置」却还在转，用户会以为按钮没生效。
+  btnReset.onclick = () => {
+    exitFocus()
+    if (autoSpin) {
+      autoSpin = false
+      if (btnSpin) { btnSpin.classList.remove('on'); btnSpin.textContent = '自动旋转' }
+    }
+  }
+  if (btnSpin) {
+    // 自动旋转只推 camTarget.yaw，转动仍走既有的指数插值，所以是「缓缓转」不是「跳着转」
+    btnSpin.onclick = () => {
+      autoSpin = !autoSpin
+      btnSpin.classList.toggle('on', autoSpin)
+      btnSpin.textContent = autoSpin ? '停止旋转' : '自动旋转'
+    }
+  }
+
+  // ── 筛选面板：默认收起，左上角按钮切换 ──
+  const btnFilter = document.getElementById('btnFilter')
+  if (btnFilter && elSide) {
+    btnFilter.onclick = () => {
+      const open = elSide.classList.toggle('open')
+      btnFilter.classList.toggle('on', open)
+      btnFilter.setAttribute('aria-expanded', open ? 'true' : 'false')
+    }
+  }
+
   document.getElementById('btnRecent').onclick = (e) => {
     recentOnly = !recentOnly
     e.target.textContent = recentOnly ? '看全部' : '只看最近'
@@ -1233,9 +2133,16 @@ export function renderSeaPage() {
   const bgToggleEl = document.getElementById('bgToggle')
   if (bgToggleEl) bgToggleEl.addEventListener('click', toggleBackground)
 
-  // Esc 退出。先关关系面板（它是最近打开的那层），再退聚焦——
-  // 一次 Esc 只退一层，跟「进入一个局部」的心智一致。
+  // 退出聚焦：Esc 和空格都行（参考视频的提示写的就是 PRESS SPACE TO EXIT）。
+  // 空格只在聚焦态拦——不然会把页面滚动一起吃掉。
+  // Esc 的层次是「一次只退一层」：先关关系面板，再退聚焦，跟「进入一个局部」的心智一致。
   window.addEventListener('keydown', (e) => {
+    if (e.key === ' ' || e.code === 'Space') {
+      if (!focusMode) return
+      e.preventDefault()
+      exitFocus()
+      return
+    }
     if (e.key !== 'Escape' && e.key !== 'Esc') return
     if (selectedEdgeKey) closeEdgeDetail()
     else if (focusMode) exitFocus()
@@ -1275,10 +2182,10 @@ export function renderSeaPage() {
         return {
           x: r.x,
           y: r.y,
-          width: innerWidth,
-          height: innerHeight,
-          dx: Math.round((r.x - innerWidth / 2) * 100) / 100,
-          dy: Math.round((r.y - innerHeight / 2) * 100) / 100,
+          width: VW,
+          height: VH,
+          dx: Math.round((r.x - VW / 2) * 100) / 100,
+          dy: Math.round((r.y - VH / 2) * 100) / 100,
         }
       },
       visible: () => visiblePoints().length,

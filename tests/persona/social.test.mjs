@@ -674,3 +674,52 @@ test('候选幂等：同来源同话题同一天不重复提', async (t) => {
   assert.equal(second.duplicates, 1);
   assert.equal(countRows(rig.brain.db, 'social_candidates'), 1, '同一天同一话题只提一次');
 });
+
+test('send(approved) 发送前复核：仲裁过关后进了安静时段，一律不发', async (t) => {
+  // 2026-11-02 补：send 原来只判「canExternal + 候选状态」，仲裁那关过的闸不再复核。
+  // 后果是中午批的候选晚上还能发出去。这条测试盯的就是那个洞。
+  const rig = await readyRig(t);
+  await setSwitches(rig.workspace, { social: true, external: true });
+  await rig.persona.persons.updatePolicy({ personId: rig.personId, dailyCap: 5, quietHours: [] });
+
+  const generated = await rig.persona.social.generate({ personId: rig.personId, signals: DISCOVERY_SIGNALS });
+  const id = generated.candidates[0].id;
+  const arbitrated = await rig.persona.social.arbitrate(id);
+  assert.equal(arbitrated.advanced, true, '先要有一条正常过闸的候选');
+  assert.equal(rig.persona.social.getCandidate(id).status, 'awaiting_approval');
+
+  // 过闸之后把安静时段设成覆盖此刻（默认起点是 10:00）
+  await rig.persona.persons.updatePolicy({
+    personId: rig.personId,
+    quietHours: [{ from: '09:00', to: '11:00' }],
+  });
+
+  const sent = await rig.persona.social.send(id, { mode: 'approved', channel: 'im' });
+  assert.equal(sent.sent, false, '安静时段到了就不该发出去');
+  assert.equal(sent.reason, 'quiet_hours');
+  assert.equal(
+    rig.persona.social.getCandidate(id).status,
+    'awaiting_approval',
+    '没发出去就不该推进状态',
+  );
+});
+
+test('send(approved) 发送前复核：候选已过期就不发', async (t) => {
+  const rig = await readyRig(t);
+  await setSwitches(rig.workspace, { social: true, external: true });
+
+  const generated = await rig.persona.social.generate({ personId: rig.personId, signals: DISCOVERY_SIGNALS });
+  const id = generated.candidates[0].id;
+  await rig.persona.social.arbitrate(id);
+  assert.equal(rig.persona.social.getCandidate(id).status, 'awaiting_approval');
+
+  // 状态还是 awaiting_approval，但过期时间已经过去了（生产里 expire 没人调用，所以这是常态）
+  rig.brain.db
+    .prepare('UPDATE social_candidates SET expires_at = ? WHERE id = ?')
+    .run('2026-10-01T00:00:00.000Z', id);
+
+  const sent = await rig.persona.social.send(id, { mode: 'approved', channel: 'im' });
+  assert.equal(sent.sent, false, '过期的候选不许发');
+  assert.equal(sent.reason, 'expired');
+  assert.equal(rig.persona.social.getCandidate(id).status, 'awaiting_approval');
+});

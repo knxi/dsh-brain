@@ -55,6 +55,12 @@ const DENY_PATH_PARTS = ['/screenshots/'];
 const DENY_FILE = [
   /\.db$/i, /\.db-wal$/i, /\.db-shm$/i, /\.sqlite3?$/i, /\.sqlite-/i,
   /\.log$/i, /\.pem$/i, /\.key$/i, /\.p12$/i, /\.pfx$/i,
+  // 编辑器/手工备份（2026-11-02 补）：`.bak-before-v2`、`.orig-20261031-socialsend`
+  // 这类后缀不是正常代码，进仓库只是垃圾。而且它们是**旧版本快照**——
+  // 旧版本里往往还留着这一轮刚清掉的私人信息（比如写死的本机路径），
+  // 所以「清理敏感信息」时必须连备份一起排除，否则等于白清。
+  /\.bak(-|$)/i, /\.orig(-|$)/i, /\.old(-|$)/i, /\.backup(-|$)/i,
+  /~$/,
 ];
 /** 例外：允许上传（哪怕是上面命中的形状）。 */
 const ALLOW_FILE = [/^\.env\.example$/i];

@@ -20,13 +20,14 @@
  * 5. **幂等** —— 用内容指纹去重：已存在同 content 的跳过。重复跑不会灌一堆重复。
  * 6. **失败不中断** —— 逐条 try/catch，最后汇总。一条坏数据不该让整次迁移停摆。
  */
+import { homedir } from 'node:os'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 import { openBrain } from '../packages/memory/src/index.js'
 
-const ENGRAM_DIR = 'C:/Users/su/.dsh/engram'
+const ENGRAM_DIR = `${homedir()}/.dsh/engram`
 const BRAIN_DB = 'E:/ds-h/dsh-brain/data/brain.db'
 const MIGRATIONS = 'E:/ds-h/dsh-brain/migrations'
 const SCOPE_ID = 'owner-default'

@@ -12,11 +12,12 @@
  *
  * 用法：node apps/probe/rollback.mjs
  */
+import { homedir } from 'node:os'
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 
 const REPO = 'E:/ds-h/dsh-brain'
-const PROFILE_DIR = 'C:/Users/su/.dsh/profiles/brainlab'
+const PROFILE_DIR = `${homedir()}/.dsh/profiles/brainlab`
 const PATCH_FILE = `${PROFILE_DIR}/cordis.patch.yml`
 const OUT = `${REPO}/data/probe/rollback`
 

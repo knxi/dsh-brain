@@ -19,12 +19,13 @@
  *   node apps/connector/smoke.mjs            # 两个场景（单步 / 两步工具回合）
  *   node apps/connector/smoke.mjs single     # 只跑指定场景
  */
+import { homedir } from 'node:os'
 import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const REPO = 'E:/ds-h/dsh-brain'
-const PROFILE_DIR = process.env.DSH_PROFILE_BRAINLAB ?? 'C:/Users/su/.dsh/profiles/brainlab'
+const PROFILE_DIR = process.env.DSH_PROFILE_BRAINLAB ?? `${homedir()}/.dsh/profiles/brainlab`
 const PATCH_PATH = join(PROFILE_DIR, 'cordis.patch.yml')
 const LINK_PARENT = join(PROFILE_DIR, 'node_modules', '@dsh-brain')
 const LINK_PATH = join(LINK_PARENT, 'connector')

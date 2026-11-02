@@ -11,49 +11,80 @@
  * 这里把**导航项和顺序**收成一个数据表（NAV_ITEMS），页面只负责说自己是谁（active）。
  * 加一页、改顺序、改叫法，都只改这张表，不用再去六个文件里找 `<a class="navlink"`。
  *
+ * ── 2026-11-01 v2 改版：品牌条和标题区也收进来 ──
+ *
+ * v2「白昼实验室」的页面骨架是三段式的，每页都一样：
+ *
+ *     品牌条（标记 + 字标 + 系统状态灯）
+ *     标题区（编号 kicker → 大标题 → 右对齐说明）
+ *     粘性导航条（十个 tab，吸顶）
+ *
+ * 这三段如果留在十个页面里各写一遍，改一个字母就要改十个文件——跟当初导航散落
+ * 各页是同一个病。所以整块收成 `renderPageHead()`：页面只传「我是谁、叫什么、
+ * 一句话说明」，其余完全一致。
+ *
  * ── 三条纪律 ──
  *
  * 1. **顺序固定**：记忆 / 心海 / 使用 / 矛盾 / 实体 / 心情 / 空间 / 类脑 / 人格 / 指令 / 治理。
  *    顺序按「读 → 看 → 用 → 验 → 人 → 我 → 空间 → 系统 → 说话 → 动手 → 管」的认知路径排，
- *    不是按字母、不是按新旧。后四项是 M8 的四套系统（工作空间 / 类脑协同 / 人格与社交 /
- *    自主指令），排在「心情」之后、「治理」之前：先看「我怎么样」，再看「系统怎么样」，
- *    最后才是「谁能动它」。
- * 2. **这个文件不再管样式**（2026-11-01）。原先是两套 `.navlink`（纸感版给十个页面、
- *    深色版给心海），谁也别处的样式都从这里引。问题是页面热重载只认自己的 mtime，
- *    页面内部静态 import 的模块会被缓存成旧实例——改导航样式必须重启宿主才生效，
- *    而改主题、改页面都只要刷新。同一份样式两处定义 + 一处改不动，就是「改不齐」的根源。
- *    现在：导航样式统一在 theme.js 的注入区（十个页面）与 sea-page.js 的 `<style>` 里
- *    （心海是近黑全屏页，就地定义）。**样式跟着页面文件走，改完刷新即见。**
- * 3. **不许出现裸反引号**：这个文件虽然不在模板字符串里，但拼 HTML 一律用单引号
- *    字符串数组 join，不用模板字符串——同一套纪律，少一个踩坑的地方（CONTRACTS 3.7 第 31 条）。
+ *    不是按字母、不是按新旧。
+ * 2. **这个文件不管样式**（2026-11-01）。原先两套 `.navlink` 都从这里引，但页面热重载
+ *    只认自己的 mtime，页面内部静态 import 的模块会被缓存成旧实例——改导航样式必须
+ *    重启宿主。现在样式统一在 theme.js 的注入区，心海的就地写在 sea-page.js。
+ *    **样式跟着页面文件走，改完刷新即见。**
+ * 3. **不许出现裸反引号**：拼 HTML 一律用单引号字符串数组 join，不用模板字符串。
  */
 
 /**
  * 导航项。**顺序在这里定义一次**，所有页面按它渲染。
- * key 同时是 `renderNav({ active })` 的取值，也是将来做「当前页」判定的唯一凭据。
- * @type {ReadonlyArray<{ key: string, label: string, href: string }>}
+ * key 同时是 `renderNav({ active })` 的取值，也是「当前页」判定的唯一凭据。
+ * kicker —— 标题区左上角那行 mono 编号：`序号 / 英文代号 CONTROL`。
+ * @type {ReadonlyArray<{ key: string, label: string, href: string, kicker: string }>}
  */
 export const NAV_ITEMS = Object.freeze([
-  { key: 'memory', label: '记忆', href: '/dsh-brain' },
-  { key: 'sea', label: '心海', href: '/dsh-brain/sea' },
-  { key: 'usage', label: '使用', href: '/dsh-brain/usage' },
-  { key: 'conflicts', label: '矛盾', href: '/dsh-brain/conflicts' },
-  { key: 'entities', label: '实体', href: '/dsh-brain/entities' },
-  { key: 'mood', label: '心情', href: '/dsh-brain/mood' },
-  { key: 'workspace', label: '空间', href: '/dsh-brain/workspace' },
-  { key: 'cognition', label: '类脑', href: '/dsh-brain/cognition' },
-  { key: 'persona', label: '人格', href: '/dsh-brain/persona' },
-  { key: 'directives', label: '指令', href: '/dsh-brain/directives' },
-  { key: 'governance', label: '治理', href: '/dsh-brain/governance' },
+  { key: 'memory', label: '记忆', href: '/dsh-brain', kicker: '01 / MEMORY CONTROL' },
+  { key: 'sea', label: '心海', href: '/dsh-brain/sea', kicker: '02 / NEURAL FIELD' },
+  { key: 'usage', label: '使用', href: '/dsh-brain/usage', kicker: '03 / USAGE CONTROL' },
+  { key: 'conflicts', label: '矛盾', href: '/dsh-brain/conflicts', kicker: '04 / CONFLICTS CONTROL' },
+  { key: 'entities', label: '实体', href: '/dsh-brain/entities', kicker: '05 / ENTITIES CONTROL' },
+  { key: 'mood', label: '心情', href: '/dsh-brain/mood', kicker: '06 / MOOD CONTROL' },
+  { key: 'workspace', label: '空间', href: '/dsh-brain/workspace', kicker: '07 / WORKSPACE CONTROL' },
+  { key: 'cognition', label: '类脑', href: '/dsh-brain/cognition', kicker: '08 / COGNITION CONTROL' },
+  { key: 'persona', label: '人格', href: '/dsh-brain/persona', kicker: '09 / PERSONA CONTROL' },
+  { key: 'directives', label: '指令', href: '/dsh-brain/directives', kicker: '10 / DIRECTIVES CONTROL' },
+  { key: 'governance', label: '治理', href: '/dsh-brain/governance', kicker: '11 / GOVERNANCE CONTROL' },
 ])
 
-/** HTML 属性值转义：label / href 目前都是常量，但模板拼字符串就该一律转义，别留口子。 */
+/** HTML 属性值转义：href 目前都是常量，但模板拼字符串就该一律转义，别留口子。 */
 function attr(v) {
   return String(v)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+}
+
+/** 文本转义（标题、说明这些要进 HTML 的）。 */
+function text(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+/**
+ * 品牌条：左边一枚慢转的菱形标记 + 字标，右边系统状态灯。
+ *
+ * 每页一字不差，所以不收参数——真要改字标，改这一处就够。
+ * 状态灯固定 ONLINE：这套页面只有在服务真起来时才能被访问到，能打开就是在线；
+ * 真实连通状态显示在 7420 治理面板的右上角，不在这里冒充。
+ */
+export function renderBrandbar() {
+  return '<div class="brandbar">'
+    + '<div class="brandmark" aria-hidden="true"><i></i></div>'
+    + '<div class="brandname">外置大脑<small>EXTERNAL BRAIN / NEURAL OS</small></div>'
+    + '<div class="system-state"><i class="lamp ok"></i><span>NEURAL CORE</span><b>ONLINE</b></div>'
+    + '</div>'
 }
 
 /**
@@ -72,8 +103,33 @@ export function renderNav(opts) {
     const on = item.key === active
     parts.push(
       '<a class="navlink' + (on ? ' active' : '') + '" href="' + attr(item.href) + '"'
-      + (on ? ' aria-current="page"' : '') + '>' + attr(item.label) + '</a>'
+      + (on ? ' aria-current="page"' : '') + '>' + text(item.label) + '</a>'
     )
   }
   return '<nav class="nav" aria-label="外置大脑导航">' + parts.join('') + '</nav>'
+}
+
+/**
+ * 页面骨架的头三段：品牌条 + 标题区（含粘性导航）。
+ *
+ * 页面用法：`<div class="wrap">${renderPageHead({...})}<div class="path">…</div>…</div>`
+ *
+ * @param {{ active: string, title: string, sub?: string }} opts
+ *   active —— 当前页 key（决定导航高亮与 kicker 编号）
+ *   title  —— 大标题（「记忆」「心海」…）
+ *   sub    —— 标题右侧那句说明，一到两行
+ * @returns {string}
+ */
+export function renderPageHead(opts) {
+  const o = opts && typeof opts === 'object' ? opts : {}
+  const active = typeof o.active === 'string' ? o.active : ''
+  const item = NAV_ITEMS.find((it) => it.key === active)
+  const kicker = item ? item.kicker : ''
+  return renderBrandbar()
+    + '<div class="head">'
+    + '<div class="head-kicker">' + text(kicker) + '</div>'
+    + '<h1>' + text(o.title || '') + '</h1>'
+    + (o.sub ? '<span class="sub">' + text(o.sub) + '</span>' : '')
+    + renderNav({ active: active })
+    + '</div>'
 }

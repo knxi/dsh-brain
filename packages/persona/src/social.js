@@ -1624,6 +1624,46 @@ export function createSocial(options) {
         deliveryMode: 'approved',
       };
     }
+
+    // ── 发送前复核（2026-11-02 补）────────────────────────────────
+    // 仲裁那一关过的闸，是**当时**的结论。候选可能中午 12 点过的闸，晚上 22 点
+    // 才被点「批准并发送」——安静时段、每日上限、冷却全都变了，甚至已经过期。
+    // 不复核的话，那些闸就成了一张一次性通行证，只能证明「中午那会儿合规」。
+    //
+    // 刻意**不复核 max_pending**：它问的是「队排多长」，跟能不能发这一条无关；
+    // 而且这条候选自己就还在待批队列里，复核它等于自己挡自己。
+    const expiresAtMs = candidate.expiresAt === null || candidate.expiresAt === undefined
+      ? null
+      : Date.parse(String(candidate.expiresAt));
+    if (expiresAtMs !== null && Number.isFinite(expiresAtMs) && nowMs > expiresAtMs) {
+      return {
+        sent: false,
+        ok: false,
+        recorded: false,
+        queued: false,
+        reason: 'expired',
+        expiresAt: candidate.expiresAt,
+        deliveryMode: 'approved',
+      };
+    }
+    const SEND_RECHECK_CODES = ['policy_enabled', 'quiet_hours', 'daily_cap', 'cooldown', 'topic_cooldown'];
+    const recheck = checkPolicyGates(
+      loadContext({ personId: candidate.personId, nowMs }),
+      { topic: candidate.topic, source: candidate.source },
+    );
+    const blockedGate = recheck.gates.find((item) => !item.passed && SEND_RECHECK_CODES.includes(item.code));
+    if (blockedGate !== undefined) {
+      return {
+        sent: false,
+        ok: false,
+        recorded: false,
+        queued: false,
+        reason: blockedGate.code,
+        detail: blockedGate.detail,
+        deliveryMode: 'approved',
+      };
+    }
+
     const channel = meta.channel ?? 'im';
     if (!channelHook) {
       const record = await recordSend({

@@ -11,11 +11,12 @@
  *   node apps/probe/attach.mjs detach    # 摘掉探针（回滚验证）
  *   node apps/probe/attach.mjs status    # 查看当前状态
  */
+import { homedir } from 'node:os'
 import { existsSync, lstatSync, mkdirSync, readlinkSync, rmSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 
-const PROFILE_DIR = process.env.DSH_PROFILE_BRAINLAB || 'C:/Users/su/.dsh/profiles/brainlab'
+const PROFILE_DIR = process.env.DSH_PROFILE_BRAINLAB || `${homedir()}/.dsh/profiles/brainlab`
 const PROBE_DIR = 'E:/ds-h/dsh-brain/apps/probe'
 const LINK_PARENT = join(PROFILE_DIR, 'node_modules', '@dsh-brain')
 const LINK_PATH = join(LINK_PARENT, 'probe')

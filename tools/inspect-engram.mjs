@@ -5,10 +5,11 @@
  *
  *   node tools/inspect-engram.mjs
  */
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
-const ENGRAM_DIR = 'C:/Users/su/.dsh/engram'
+const ENGRAM_DIR = `${homedir()}/.dsh/engram`
 const TARGETS = [
   'user.db',
   'project-7022370e5838aae5c77897be.db',

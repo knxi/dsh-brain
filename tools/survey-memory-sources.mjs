@@ -11,11 +11,12 @@
  *
  *   node tools/survey-memory-sources.mjs [--json]
  */
+import { homedir } from 'node:os'
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
-const HOME = 'C:/Users/su/.dsh'
+const HOME = `${homedir()}/.dsh`
 const LINGSHU_DIR = join(HOME, '.dsh-memory', 'data', 'mdcg')
 const ENGRAM_DIR = join(HOME, 'engram')
 

@@ -28,12 +28,17 @@ export const KNOWN_SWITCHES = Object.freeze({
   'social.enabled': '0',
   'social.allow_external': '0',
   'reflection.enabled': '0',
+  // 反思候选跑完自动晋升成记忆（2026-11-02 主人授权「你自己自动晋升」）。
+  // 默认给 '1'：授权就是授权，不需要主人再点一次。
+  // 但它是**布尔开关**——出问题时一句 SQL 或面板上一点就能停，不用改代码。
+  'reflection.auto_promote': '1',
   'paused': '0',
 })
 
 /** 会被 `isEnabled` 当布尔解释的键。 */
 const BOOLEAN_SWITCHES = Object.freeze([
-  'autonomy.enabled', 'social.enabled', 'social.allow_external', 'reflection.enabled', 'paused',
+  'autonomy.enabled', 'social.enabled', 'social.allow_external',
+  'reflection.enabled', 'reflection.auto_promote', 'paused',
 ])
 
 const TRUE_VALUES = Object.freeze(['1', 'true', 'on', 'yes'])

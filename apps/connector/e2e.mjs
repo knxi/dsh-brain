@@ -21,6 +21,7 @@
  *   node apps/connector/e2e.mjs            # 两个场景（单步 / 两步工具回合）
  *   node apps/connector/e2e.mjs single     # 只跑一个
  */
+import { homedir } from 'node:os'
 import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -28,7 +29,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..', '..')
-const PROFILE_DIR = process.env.DSH_PROFILE_BRAINLAB ?? 'C:/Users/su/.dsh/profiles/brainlab'
+const PROFILE_DIR = process.env.DSH_PROFILE_BRAINLAB ?? `${homedir()}/.dsh/profiles/brainlab`
 const PATCH_PATH = join(PROFILE_DIR, 'cordis.patch.yml')
 const LINK_PARENT = join(PROFILE_DIR, 'node_modules', '@dsh-brain')
 const LINK_PATH = join(LINK_PARENT, 'connector')

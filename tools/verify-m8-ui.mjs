@@ -84,6 +84,9 @@ function runInlineScript(html) {
     createElement: makeEl,
     getElementById: () => makeEl(),
     addEventListener() {},
+    // 人格页脚本一上来就用 document.querySelector 找投递区；stub 里漏了它，
+    // 会把「页面脚本真能跑」误报成装载失败。补成返回 null：初始化阶段找不到元素是合法状态。
+    querySelector: () => null,
     querySelectorAll: () => [],
   }
   const stubWindow = { setTimeout: () => 0, clearTimeout() {} }
@@ -343,10 +346,15 @@ async function main() {
       wsView && Array.isArray(wsView.errors) ? 'errors=' + wsView.errors.length : 'view 无效')
     const wsHtml = renderWorkspacePage({ scopeId, view: wsView })
     assertHtml('工作空间页', wsHtml, [
-      '工作空间', '六个开关', '注意力焦点', '候选队列', '最近事件',
+      '工作空间', '个开关', '注意力焦点', '候选队列', '最近事件',
       '全局暂停', '最高权限等级', '整理外墙保温笔记',
       '把「外墙保温 50mm」补进项目事实',
     ])
+    // 标题原来写死「六个开关」，页面改成 `${switches.length} 个开关` 后这条就失配了。
+    // 拆成两条：文字存在（上面）+ 数量跟数据一致（这里）——后者才是真正想验的东西。
+    check('工作空间页 · 开关数量与数据一致',
+      Array.isArray(wsView.switches) && wsHtml.includes(String(wsView.switches.length) + ' 个开关'),
+      Array.isArray(wsView.switches) ? '标题应为 ' + wsView.switches.length + ' 个开关' : 'switches 不是数组')
     check('工作空间页 · 事件流渲染到了发布的事件',
       wsHtml.includes('reflection.completed') && wsHtml.includes('dmn'),
       '事件行存在')
@@ -358,18 +366,19 @@ async function main() {
       cogView ? 'errors=' + cogView.errors.length : 'view 无效')
     const cogHtml = renderCognitionPage({ scopeId, view: cogView })
     assertHtml('类脑页', cogHtml, [
-      '类脑', '告警中心', '五格统计', '反思候选', '免疫隔离区', '弱技能',
+      '类脑', '告警中心', '五格统计', '反思候选', '免疫隔离区', '把握还不高的工具',
       '备份目录不存在（验证用）',
       '主人提过「下周再看一版 UI」，还没有后续。',
       '提示注入',
       'data-act="alert-ack"', 'data-act="refl-promote"', 'data-act="quar-release"',
     ])
     // 用卡头判定顺序：CSS 注释里也会出现「五格统计」这几个字，按裸文本查会误判。
+    // 卡头类名是 .panel-title（页面早就不用 card-title 了，断言跟着改）。
     check('类脑页 · 告警在首屏（五格统计之前）',
-      cogHtml.indexOf('card-title">告警中心') !== -1
-      && cogHtml.indexOf('card-title">告警中心') < cogHtml.indexOf('card-title">五格统计'),
-      '告警@' + cogHtml.indexOf('card-title">告警中心')
-      + ' 统计@' + cogHtml.indexOf('card-title">五格统计'))
+      cogHtml.indexOf('panel-title">告警中心') !== -1
+      && cogHtml.indexOf('panel-title">告警中心') < cogHtml.indexOf('panel-title">五格统计'),
+      '告警@' + cogHtml.indexOf('panel-title">告警中心')
+      + ' 统计@' + cogHtml.indexOf('panel-title">五格统计'))
 
     // ── 页面 3/4：人格与主动社交 ──
     const perView = collectPersonaView(brain, { scopeId })
@@ -403,9 +412,12 @@ async function main() {
       'data-act="pause"', 'data-act="level"',
       '整理索引 → 校验 → 收尾',
     ])
+    // 同样按卡头锚点比顺序：裸文本「指令队列」在导航/说明里也会先出现，比出来的是假顺序。
     check('指令页 · 边界在首屏（队列之前）',
-      dirHtml.indexOf('这个执行器的边界') < dirHtml.indexOf('指令队列'),
-      '顺序正确')
+      dirHtml.indexOf('panel-title">这个执行器的边界') !== -1
+      && dirHtml.indexOf('panel-title">这个执行器的边界') < dirHtml.indexOf('panel-title">指令队列'),
+      '边界@' + dirHtml.indexOf('panel-title">这个执行器的边界')
+      + ' 队列@' + dirHtml.indexOf('panel-title">指令队列'))
     check('指令页 · 默认姿态显示为「全关」',
       dirHtml.includes('autonomy.enabled=0') || dirHtml.includes('默认全关'),
       '安全默认可见')

@@ -46,6 +46,37 @@ const BEGIN = '/* ══ THEME:BEGIN ══ */'
 const END = '/* ══ THEME:END ══ */'
 
 /**
+ * 共享依赖：页面会 `import … from './nav.js'`，而 nav.js 是**被 import 的模块**——
+ * 它不随页面热重载失效（页面按 mtime 加 ?v=，但页面内部的静态 import 解析出的 URL
+ * 不带 query，永远命中第一次加载的旧实例）。
+ *
+ * 2026-11-01 踩过两次：改 theme.js 不生效（第一次）、加 renderPageHead 后记忆页
+ * 整个请求挂起（第二次——旧 nav.js 没有那个导出，render 抛错，`res.end` 没执行，
+ * 请求一直挂着不返回）。第二次比第一次难查：页面白屏能看到，请求挂起看不出。
+ *
+ * 修法：**注入时顺手把页面里的 nav.js import 刷新成带版本号的**。
+ * 这样改完 nav.js 跑一次注入，所有页面立刻拿到新实例，不用重启宿主。
+ * 只改 import 说明符，不动任何逻辑。
+ */
+const NAV_FILE = join(PAGES_DIR, 'nav.js')
+
+function navVersion() {
+  try {
+    return String(Math.floor(statSync(NAV_FILE).mtimeMs))
+  } catch {
+    return '0'
+  }
+}
+
+/** 把 `from './nav.js'` / `from './nav.js?v=123'` 统一刷成当前版本。 */
+function refreshNavImport(source) {
+  const v = navVersion()
+  if (v === '0') return source // 读不到 mtime：保持原样，不让它变成坏 import
+  return source.replace(/from\s+'(\.\/nav\.js)(\?v=\d+)?'/g, "from '$1?v=" + v + "'")
+}
+
+
+/**
  * 读 theme.js 里的 THEME_CSS。
  * 用 import 而不是正则抠字符串：theme.js 的内容是拼出来的，直接拿导出的成品最不容易错。
  */
@@ -121,6 +152,8 @@ async function main() {
       missing.push(fileName)
       continue
     }
+    // 顺手把 nav.js 的 import 刷新成带版本号——否则改 nav.js 不重启不生效（见上面长注释）
+    after = refreshNavImport(after)
     if (after === before) continue
     changed.push(fileName)
     if (!check) writeFileSync(full, after, 'utf8')

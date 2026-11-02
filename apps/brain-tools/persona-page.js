@@ -29,7 +29,7 @@
  *    服务端回 `ok:false` 就是没发出去，不许渲染成成功。
  */
 
-import { renderNav } from './nav.js'
+import { renderPageHead } from './nav.js?v=1793594997081'
 
 /**
  * 主动社交候选来源中文。
@@ -174,7 +174,7 @@ function overrideEditor(body) {
     + 'placeholder="一行一条，比如：&#10;称呼：叫我老板&#10;语气：别用敬语">'
     + esc(preset) + '</textarea>'
     + '<div class="override-actions">'
-    + '<button type="button" class="btn small" data-act="override-save" data-confirm="保存覆盖">保存覆盖</button>'
+    + '<button type="button" class="btn btn--sm" data-act="override-save" data-confirm="保存覆盖">保存覆盖</button>'
     + '<span class="override-hint">点一次，再点一次确认 → 生成新版本并立即生效，随时可回滚</span>'
     + '</div>'
     + '</div>'
@@ -233,23 +233,39 @@ function breakdownBlock(breakdown) {
 }
 
 /**
- * 顶部开关按钮（2026-10-31 加）：主人要在页面上**直接控制**，不能只看状态。
+ * 开关条（2026-11-02 重做）。
  *
- * 设计：
- *   - 按钮上显示的是**当前状态**，点它切到相反值（data-next 带的是「点完之后的值」）；
- *   - 统一走现成的写接口 /dsh-brain/api/workspace/switch（同源保护 + 审计）；
- *   - 两步确认复用页面里已有的 armed 机制（第一次点只写后果，4 秒不点自动退回）。
- * 「外发能力」不是开关（取决于通道有没有配），保持只读。
+ * 旧版是「文字 chip + 开关状态拼在一句里」（「主动社交 开」），三个问题：
+ *   1. **看不出能点**：渲染出来跟旁边只读的状态 chip 长得一样，主人得猜；
+ *   2. **「关」被画成灰底**，而「全局暂停：关」其实是最正常的状态——灰色读成了「禁用」；
+ *   3. 只读信息（外发能力 / 真发会不会被拦）跟开关挤在同一排，权重一样，分不清哪些能操作。
  *
- * 放在模块级而不是某个 render 函数里：顶部状态条和「主动社交」卡片两处都要用。
+ * 新版：每个开关是一格「标签 + 拨杆 + 状态字」，拨杆的位置本身就是状态，
+ * 谁都能看出这是可拨的；只读信息移出这一排，单独一行说明。
+ *
+ * 两步确认仍然复用页面里已有的 armed 机制（第一次点只提醒后果，4 秒不点自动退回）。
+ * **armed 只加类、不改 textContent**：这套按钮内部是 span 结构，
+ * 一旦被 textContent 覆盖，拨杆和状态字就没了。
+ *
+ * 「外发能力」不是开关（取决于通道有没有配），仍然只读。
  */
-function switchChip(name, label, on, hint) {
-  const next = on ? '0' : '1'
-  return '<button type="button" class="chip chip-btn ' + (on ? 'ok' : '') + '"'
-    + ' data-act="switch" data-switch="' + esc(name) + '" data-next="' + next + '"'
-    + ' data-label="' + esc(label) + '"'
-    + ' title="' + esc(hint) + '（点击切换）">'
-    + esc(label) + ' ' + (on ? '开' : '关') + '</button>'
+function switchPill(item) {
+  const next = item.on ? '0' : '1'
+  return '<button type="button" class="sw' + (item.on ? ' on' : '') + '"'
+    + ' data-act="switch" data-switch="' + esc(item.name) + '" data-next="' + next + '"'
+    + ' data-label="' + esc(item.label) + '"'
+    + ' aria-pressed="' + (item.on ? 'true' : 'false') + '"'
+    + ' title="' + esc(item.hint) + '（点一下切换）">'
+    + '<span class="sw-k">' + esc(item.label) + '</span>'
+    + '<span class="sw-s">' + (item.on ? '开' : '关') + '</span>'
+    + '<span class="sw-t" aria-hidden="true"><i></i></span>'
+    + '</button>'
+}
+
+/** 一排开关。items = [{ name, label, on, hint }]；compact 用于卡片内部（跟页头那排分级） */
+function switchBar(items, compact) {
+  return '<div class="sw-bar' + (compact ? ' sw-bar--compact' : '') + '">'
+    + (items || []).map(switchPill).join('') + '</div>'
 }
 
 /**
@@ -279,7 +295,7 @@ function policyEditor(policy) {
     + ' title="格式 HH:mm-HH:mm，多个用逗号分隔；留空表示取消免打扰"></label>'
     + '</div>'
     + '<div class="policy-actions">'
-    + '<button type="button" class="btn small" data-act="policy-save" data-confirm="保存策略">保存策略</button>'
+    + '<button type="button" class="btn btn--sm" data-act="policy-save" data-confirm="保存策略">保存策略</button>'
     + '<span class="policy-note">点两次保存（两步确认）。范围会被服务端校验，越界的值会以错误码拒绝，不会静默夹取。</span>'
     + '</div></div>'
 }
@@ -301,10 +317,10 @@ function channelEditor() {
     + '<label class="pol-field wide"><span>Target ID</span>'
     + '<input type="text" data-channel="targetId" placeholder="tgt_xxx（投递目标的调用别名）"></label>'
     + '<label class="pol-field"><span>备注名</span>'
-    + '<input type="text" data-channel="label" placeholder="比如：我的 QQ 单聊"></label>'
+    + '<input type="text" data-channel="label" placeholder="比如：我的微信"></label>'
     + '</div>'
     + '<div class="policy-actions">'
-    + '<button type="button" class="btn small" data-act="channel-save" data-confirm="保存通道">保存通道</button>'
+    + '<button type="button" class="btn btn--sm" data-act="channel-save" data-confirm="保存通道">保存通道</button>'
     + '<span class="policy-note">路径：设置 → IM机器人 → 对应账号 → 投递设置 → 复制 Bot ID / 调用参数。保存即时生效。</span>'
     + '</div></div>'
 }
@@ -332,7 +348,7 @@ function socialAutoEditor() {
     + '</select></label>'
     + '</div>'
     + '<div class="policy-actions">'
-    + '<button type="button" class="btn small" data-act="socialauto-save" data-confirm="保存主动送达设置">保存</button>'
+    + '<button type="button" class="btn btn--sm" data-act="socialauto-save" data-confirm="保存主动送达设置">保存</button>'
     + '<span class="policy-note">保存后下一轮（30 分钟内）生效，不用重启。选「微信真发」前先在 dsh-im 里确认机器人是在线的。</span>'
     + '</div></div>'
 }
@@ -343,7 +359,7 @@ function socialCard(candidate, opts) {
   const title = candidate.persisted ? '已落表的候选' : '新鲜候选'
   const wouldSay = options.highlight === true
   const chips = [
-    '<span class="chip kind">' + esc(SOURCE_LABELS[candidate.source] || candidate.source) + '</span>',
+    '<span class="chip accent">' + esc(SOURCE_LABELS[candidate.source] || candidate.source) + '</span>',
     '<span class="chip">分数 ' + esc(num(candidate.score)) + '</span>',
   ]
   if (candidate.topic) chips.push('<span class="chip">话题 ' + esc(candidate.topic) + '</span>')
@@ -355,15 +371,15 @@ function socialCard(candidate, opts) {
   }
   const dryId = candidate.id ? String(candidate.id) : ''
   const cancelButton = candidate.persisted && dryId
-    ? '<button class="btn small danger" data-act="social-cancel" data-id="' + esc(dryId)
+    ? '<button class="btn btn--sm btn--danger" data-act="social-cancel" data-id="' + esc(dryId)
       + '" data-confirm="取消这条主动社交候选">取消候选</button>'
     : ''
   // 发送按钮只给**已落表**的候选：`social.send(candidateId)` 认的是库里的 id，
   // 预演产生的 fresh 候选没有 id，给它一个按钮只会点出一句报错。
   // 「没有按钮」要配一句原因，否则会被读成「这页坏了」。
   const sendButtons = candidate.persisted && dryId
-    ? '<button class="btn small" data-act="social-send-dry" data-id="' + esc(dryId) + '">试发（不真发）</button>'
-      + '<button class="btn small danger" data-act="social-send-approved" data-id="' + esc(dryId)
+    ? '<button class="btn btn--sm" data-act="social-send-dry" data-id="' + esc(dryId) + '">试发（不真发）</button>'
+      + '<button class="btn btn--sm btn--danger" data-act="social-send-approved" data-id="' + esc(dryId)
       + '" data-confirm="批准并发送">批准并发送</button>'
     : '<span class="send-hint">这条是预演（没落表），拿到候选 id 之后才能试发 / 批准发送</span>'
   return '<div class="social' + (wouldSay ? ' would-say' : '') + '">'
@@ -377,7 +393,7 @@ function socialCard(candidate, opts) {
     + '</div>'
     + breakdownBlock(candidate.breakdown)
     + '<div class="social-actions">'
-    + '<button class="btn small" data-act="social-dry-run" data-id="' + esc(dryId)
+    + '<button class="btn btn--sm" data-act="social-dry-run" data-id="' + esc(dryId)
     + '" data-source="' + esc(candidate.source) + '" data-topic="' + esc(candidate.topic || '')
     + '" data-text="' + esc(candidate.text) + '">如果现在发会怎样</button>'
     + sendButtons
@@ -428,12 +444,14 @@ function socialPanel(social) {
   const sw = social.switches || {}
   const implementedSources = Array.isArray(social.implementedSources) ? social.implementedSources : []
   const pendingSources = Array.isArray(social.pendingSources) ? social.pendingSources : []
-  const switchLine = '<div class="gate-row">'
-    + switchChip('paused', '全局暂停', sw.paused === true, '最高优先级：暂停后所有自主模块停手')
-    + switchChip('social.enabled', '主动社交', sw.socialEnabled === true, '关掉后不再生成候选、也不发送')
-    + switchChip('social.allow_external', '允许外发', sw.allowExternal === true, '关掉后只能 dry_run，批准也不会真发')
+  // 这里原来还有一排「全局暂停 / 主动社交 / 允许外发」的开关，跟页头那排是**同一份数据**
+  // 的两个快照（v.gate 与 social.switches），点哪个都是同一次写入，会互相覆盖——
+  // 逻辑上没冲突，但两排一模一样地摆着会读成「上面管全局、下面管候选」，那是误导。
+  // 所以这里只留卡片专属的结论：按当前开关，真发这条会不会被拦。
+  const switchLine = '<div class="gate-note">'
     + '<span class="chip ' + (sw.wouldBlockRealSend ? 'bad' : 'ok') + '">真发会被拦：'
     + esc(sw.wouldBlockRealSend ? (sw.denied === null || sw.denied === undefined ? '允许外发未开' : String(sw.denied)) : '不会') + '</span>'
+    + '<span class="chip plain">三个开关在页面上方那一排，改那里就够</span>'
     + '</div>'
 
   const wouldSay = Array.isArray(social.wouldSay) && social.wouldSay.length
@@ -453,9 +471,27 @@ function socialPanel(social) {
         : '')
       + '。每一类为什么没产，看下面「没做的来源」——「没有候选」是诚实状态，不是故障。</span></div>'
 
-  const persisted = Array.isArray(social.persistedToday) && social.persistedToday.length
-    ? '<div class="sub-block"><div class="sub-title">今天已落表的候选</div>'
-      + social.persistedToday.map((candidate) => socialCard(candidate, {})).join('') + '</div>'
+  // 候选分组（2026-11-02）：原来今天落表的候选全平铺，实测 25 条里 14 条是已经
+  // rejected 的死候选——它们拿不到任何操作按钮，只负责把页面拉长半屏。
+  // 现在只把「等你处理的」直接列出来，已结束的折进 <details> 默认收起。
+  const PENDING_STATUSES = ['awaiting_approval', 'scheduled']
+  const persistedAll = Array.isArray(social.persistedToday) ? social.persistedToday : []
+  const persistedActive = persistedAll.filter((candidate) => PENDING_STATUSES.includes(String(candidate.status)))
+  const persistedClosed = persistedAll.filter((candidate) => !PENDING_STATUSES.includes(String(candidate.status)))
+  const persisted = persistedAll.length
+    ? '<div class="sub-block"><div class="sub-title">今天已落表的候选'
+      + '（共 ' + esc(String(persistedAll.length)) + ' 条，' + esc(String(persistedActive.length)) + ' 条等你处理）</div>'
+      + (persistedActive.length
+        ? persistedActive.map((candidate) => socialCard(candidate, {})).join('')
+        : '<div class="empty"><strong>没有等你处理的候选</strong>'
+          + '<span>今天落表的候选都已结束（被拒 / 已取消 / 已发出）。要回看就展开下面那块。</span></div>')
+      + (persistedClosed.length
+        ? '<details class="closed-list"><summary>已结束的候选 ' + esc(String(persistedClosed.length))
+          + ' 条（展开看）</summary>'
+          + persistedClosed.map((candidate) => socialCard(candidate, {})).join('')
+          + '</details>'
+        : '')
+      + '</div>'
     : ''
 
   const sends = Array.isArray(social.sendsToday) && social.sendsToday.length
@@ -535,7 +571,7 @@ function conflictsPanel(conflicts) {
     const resolved = conflict.resolution !== 'unresolved'
     return '<div class="conflict">'
       + '<div class="conflict-top">'
-      + '<span class="chip kind">' + esc(CONFLICT_KIND_LABELS[conflict.kind] || conflict.kind) + '</span>'
+      + '<span class="chip accent">' + esc(CONFLICT_KIND_LABELS[conflict.kind] || conflict.kind) + '</span>'
       + '<span class="conflict-field">' + esc(conflict.layer + '.' + conflict.field) + '</span>'
       + '<span class="chip ' + (resolved ? 'ok' : 'bad') + '">'
       + esc(CONFLICT_RESOLUTION_LABELS[conflict.resolution] || conflict.resolution) + '</span>'
@@ -545,9 +581,9 @@ function conflictsPanel(conflicts) {
       + '<div><span class="diff-k">新</span>' + esc(dash(conflict.newValue)) + '</div>'
       + '</div>'
       + (resolved ? '' : '<div class="social-actions">'
-        + '<button class="btn small" data-act="conflict-keep-old" data-id="' + esc(conflict.id)
+        + '<button class="btn btn--sm" data-act="conflict-keep-old" data-id="' + esc(conflict.id)
         + '" data-confirm="保留旧值 ' + esc(conflict.field) + '">保留旧值</button>'
-        + '<button class="btn small" data-act="conflict-keep-new" data-id="' + esc(conflict.id)
+        + '<button class="btn btn--sm" data-act="conflict-keep-new" data-id="' + esc(conflict.id)
         + '" data-confirm="采用新值 ' + esc(conflict.field) + '">采用新值</button>'
         + '</div>')
       + '</div>'
@@ -871,13 +907,16 @@ export function renderPersonaPage(opts) {
     ? '<div class="diag warn"><b>库版本落后</b><br>' + esc(v.schemaHint) + '</div>'
     : ''
   const gateLine = gate
-    ? '<div class="gate-row">'
-      + switchChip('paused', '全局暂停', gate.paused === true, '最高优先级：暂停后所有自主模块停手')
-      + switchChip('social.enabled', '主动社交', gate.socialEnabled === true, '关掉后不再生成候选、也不发送')
-      + switchChip('social.allow_external', '允许外发', gate.allowExternal === true, '关掉后只能 dry_run，批准也不会真发')
+    ? switchBar([
+        { name: 'paused', label: '全局暂停', on: gate.paused === true, hint: '最高优先级：暂停后所有自主模块停手' },
+        { name: 'social.enabled', label: '主动社交', on: gate.socialEnabled === true, hint: '关掉后不再生成候选、也不发送' },
+        { name: 'social.allow_external', label: '允许外发', on: gate.allowExternal === true, hint: '关掉后只能 dry_run，批准也不会真发' },
+      ])
+      + '<div class="gate-note">'
       + '<span class="chip ' + (gate.canExternal ? 'ok' : 'bad') + '">外发能力 '
-      + (gate.canExternal ? '有（QQ 单聊通道）' : '无（只会 dry_run）') + '</span>'
+      + (gate.canExternal ? '有（已配置的聊天通道）' : '无（只会 dry_run）') + '</span>'
       + (gate.denied ? '<span class="chip bad">当前被拒绝：' + esc(String(gate.denied)) + '</span>' : '')
+      + '<span class="chip plain">总闸：三个开关改一次就对所有自主模块生效</span>'
       + '</div>'
     : '<div class="diag warn">开关快照读不到：gate() 没返回。不要据此判断「全是关的」。</div>'
 
@@ -890,134 +929,468 @@ export function renderPersonaPage(opts) {
 <style>
 /* ══ THEME:BEGIN ══ */
 :root{
-  color-scheme:dark;
-  --paper:#0a0b0d; --card:#111419; --card-2:#0c0e11; --raise:#181c22; --sunken:#07080a;
-  --ink:#e9ebee; --ink-2:#b7bdc7; --muted:#79818d; --faint:#4b525c;
-  --line:#232831; --line-2:#333b46; --line-soft:rgba(255,255,255,.055);
-  --accent:#e3a662; --accent-line:rgba(227,166,98,.34); --accent-soft:rgba(227,166,98,.10);
+  color-scheme:light;
+  --paper:#f2f4f7; --card:#ffffff; --card-2:#f7f8fa; --raise:#edf0f5;
+  --ink:#1a2332; --ink-2:#3d4a5c; --muted:#68788e; --faint:#98a5b7;
+  --line:#e4e8ef; --line-soft:rgba(25,42,68,.07);
+  --accent:#3b5bdb; --accent-2:#7048e8;
+  --accent-line:rgba(59,91,219,.40); --accent-soft:rgba(59,91,219,.09);
   --ochre:var(--accent); --ochre-soft:var(--accent-soft);
-  --ok:#5cc08c; --ok-soft:rgba(92,192,140,.10);
-  --warn:#d9a253; --warn-soft:rgba(217,162,83,.10);
-  --bad:#dd6b5c; --bad-soft:rgba(221,107,92,.10);
-  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Cascadia Mono",monospace;
+  --ok:#2f9e63;   --ok-soft:rgba(47,158,99,.11);
+  --warn:#dd7f0e; --warn-soft:rgba(221,127,14,.11);
+  --bad:#d64545;  --bad-soft:rgba(214,69,69,.09);
+  --slate:#8296ad; --violet:#8a6fd6;
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
-  --r:10px; --r-sm:6px; --ease:cubic-bezier(.2,0,0,1);
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Cascadia Mono",monospace;
+  --r:12px; --r-sm:7px;
+  --ease:cubic-bezier(.2,0,0,1);
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --ease-soft:cubic-bezier(.4,0,.2,1);
+  --dur-fast:.16s; --dur-normal:.28s; --dur-slow:.6s;
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.65 var(--sans);
-  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+  letter-spacing:.005em;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility}
 body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
-  background-image:linear-gradient(to right,rgba(255,255,255,.022) 1px,transparent 1px),
-    linear-gradient(to bottom,rgba(255,255,255,.022) 1px,transparent 1px);
-  background-size:64px 64px;
-  -webkit-mask-image:radial-gradient(ellipse 110% 70% at 50% 0%,#000,transparent 72%);
-  mask-image:radial-gradient(ellipse 110% 70% at 50% 0%,#000,transparent 72%)}
-body::after{content:"";position:fixed;inset:0 0 auto 0;height:420px;z-index:0;pointer-events:none;
-  background:radial-gradient(ellipse 68% 100% at 50% -22%,rgba(126,158,204,.075),transparent 70%)}
-::selection{background:rgba(227,166,98,.26);color:#fff}
+  background-image:linear-gradient(to right,rgba(59,91,219,.040) 1px,transparent 1px),
+    linear-gradient(to bottom,rgba(59,91,219,.040) 1px,transparent 1px);
+  background-size:56px 56px;
+  -webkit-mask-image:radial-gradient(ellipse 115% 75% at 50% 0%,#000,transparent 74%);
+  mask-image:radial-gradient(ellipse 115% 75% at 50% 0%,#000,transparent 74%)}
+body::after{content:"";position:fixed;inset:0 0 auto 0;height:400px;z-index:0;pointer-events:none;
+  background:radial-gradient(ellipse 70% 100% at 50% -24%,rgba(255,255,255,.9),transparent 70%)}
+body.sea-mode::before,body.sea-mode::after{display:none}
+::selection{background:rgba(59,91,219,.16);color:var(--ink)}
 a{color:var(--accent);text-decoration:none}
 a:hover{text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px}
 code{font-family:var(--mono);font-size:.92em;background:var(--raise);color:var(--ink-2);
   padding:1px 5px;border-radius:4px}
 b,strong{font-weight:620;color:var(--ink)}
 em{font-style:normal;color:var(--accent)}
-h1{font-size:20px;font-weight:600;letter-spacing:-.012em;margin:0;line-height:1.25;
-  display:flex;align-items:center;gap:9px}
-h1::before{content:"";width:5px;height:5px;border-radius:1px;background:var(--accent);
-  box-shadow:0 0 9px rgba(227,166,98,.5);flex:none}
-.sub{color:var(--muted);font-size:12.5px}
-.head{display:flex;align-items:baseline;gap:12px;margin-bottom:2px;flex-wrap:wrap}
-.path{font-family:var(--mono);font-size:11px;color:var(--faint);margin:4px 0 22px;
-  letter-spacing:.01em;word-break:break-all}
-.path::after{content:"";display:block;height:1px;margin-top:16px;
-  background:linear-gradient(90deg,var(--line-2),var(--line-soft) 55%,transparent 88%)}
-.wrap{position:relative;z-index:1;max-width:1080px;margin:0 auto;padding:34px 30px 88px}
-.wrap.wrap--wide{max-width:1200px}
-.foot{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);
-  font-size:11.5px;display:flex;gap:16px;flex-wrap:wrap;align-items:center}
 .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
-*{scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
+*{scrollbar-width:thin;scrollbar-color:#d3dae4 transparent}
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:#242a32;border-radius:8px;border:3px solid var(--paper)}
-::-webkit-scrollbar-thumb:hover{background:#39414d}
+::-webkit-scrollbar-thumb{background:#d3dae4;border-radius:8px;border:3px solid var(--paper)}
+::-webkit-scrollbar-thumb:hover{background:#b9c3d2}
 :focus-visible{outline:1.5px solid var(--accent-line);outline-offset:2px;border-radius:3px}
-.nav{display:flex;gap:2px;margin-left:auto;flex-wrap:wrap;align-items:center}
-.navlink{font-size:12.5px;letter-spacing:.01em;padding:6px 11px;border:1px solid transparent;
-  border-radius:var(--r-sm);background:transparent;color:var(--muted);text-decoration:none;
-  transition:color .14s var(--ease),background .14s var(--ease),border-color .14s var(--ease);
-  white-space:nowrap}
-.navlink:hover{border-color:var(--line);background:var(--raise);color:var(--ink);
+.wrap{position:relative;z-index:1;width:min(100%,1240px);margin:0 auto;
+  padding:24px clamp(20px,3.5vw,44px) 76px}
+.wrap.wrap--wide{width:min(100%,1360px)}
+.brandbar{display:flex;align-items:center;gap:12px;min-height:54px;padding-bottom:16px;
+  border-bottom:1px solid var(--line-soft);font-family:var(--mono)}
+.brandmark{position:relative;width:30px;height:30px;display:grid;place-items:center;flex:none}
+.brandmark::before,.brandmark::after{content:"";position:absolute;inset:2px;
+  border:1.5px solid var(--accent-line);transform:rotate(45deg);border-radius:2px}
+.brandmark::before{animation:brand-spin 12s linear infinite;transform-origin:50% 50%}
+.brandmark::after{inset:8px;border-color:var(--accent)}
+.brandmark i{width:4px;height:4px;border-radius:50%;background:var(--accent)}
+@keyframes brand-spin{to{transform:rotate(405deg)}}
+.brandname{font-size:.76rem;font-weight:650;letter-spacing:.22em;color:var(--ink)}
+.brandname small{display:block;font-size:.5rem;font-weight:500;letter-spacing:.3em;
+  color:var(--muted);margin-top:1px}
+.system-state{display:flex;align-items:center;gap:8px;margin-left:auto;height:28px;padding:0 10px;
+  border:1px solid var(--line);border-radius:999px;background:var(--card);
+  font-size:9px;letter-spacing:.14em;color:var(--muted)}
+.system-state b{font-weight:500;color:var(--ok)}
+.system-state .lamp{width:5px;height:5px;box-shadow:0 0 0 3px var(--ok-soft)}
+.head{display:grid;grid-template-columns:minmax(0,auto) minmax(280px,1fr);gap:8px 34px;
+  margin-top:30px}
+.head-kicker{grid-column:1/-1;font:500 .58rem/1.2 var(--mono);letter-spacing:.24em;
+  color:var(--accent);opacity:.9}
+h1{display:flex;align-items:center;gap:10px;margin:0;
+  font-size:clamp(2rem,3vw,2.55rem);font-weight:640;letter-spacing:-.045em;line-height:1.08}
+h1::before{content:"";width:3px;height:.72em;border-radius:2px;flex:none;
+  background:linear-gradient(var(--accent),rgba(59,91,219,.25))}
+.head>.sub{justify-self:end;text-align:right;max-width:46ch;padding-bottom:5px;
+  font-size:.82rem;line-height:1.65;color:var(--muted)}
+.nav{position:sticky;top:12px;z-index:10;grid-column:1/-1;
+  display:flex;flex-wrap:nowrap;gap:4px;align-items:center;margin-top:24px;padding:6px;
+  border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.86);
+  backdrop-filter:blur(16px);box-shadow:0 4px 18px rgba(23,32,60,.05);
+  overflow-x:auto;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.navlink{position:relative;flex:0 0 auto;min-height:38px;display:grid;place-items:center;
+  padding:0 12px;border:1px solid transparent;border-radius:7px;background:transparent;
+  font-size:.76rem;letter-spacing:.04em;color:var(--muted);text-decoration:none;
+  white-space:nowrap;cursor:pointer;
+  transition:color var(--dur-fast) var(--ease-soft),background var(--dur-fast),
+    border-color var(--dur-fast),transform var(--dur-fast) var(--ease-out)}
+.navlink:hover{transform:translateY(-1px);background:var(--raise);color:var(--ink);
   text-decoration:none}
-.navlink.active{border-color:var(--accent-line);background:var(--accent-soft);
+.navlink:active{transform:translateY(1px)}
+.navlink.active{border-color:var(--accent-line);
+  background:linear-gradient(180deg,rgba(59,91,219,.11),rgba(59,91,219,.045));
   color:var(--accent);font-weight:560}
-.navlink.active:hover{color:var(--accent)}
+.navlink.active:hover{background:linear-gradient(180deg,rgba(59,91,219,.13),rgba(59,91,219,.06));
+  color:var(--accent)}
+.navlink::after{content:"";position:absolute;left:28%;right:28%;bottom:4px;height:2px;
+  border-radius:1px;background:var(--accent);transform:scaleX(0);transform-origin:center;
+  transition:transform var(--dur-normal) var(--ease-out)}
+.navlink.active::after{transform:scaleX(1)}
+.path{display:flex;align-items:center;gap:8px;margin:16px 0 24px;
+  font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.035em;
+  word-break:break-all}
+.path::before{content:"PATH";flex:none;font-size:8px;letter-spacing:.15em;color:var(--accent);
+  border:1px solid var(--accent-line);padding:1px 5px;border-radius:3px;
+  background:var(--accent-soft)}
+.path::after{content:"";flex:1;height:1px;margin-left:6px;
+  background:linear-gradient(90deg,var(--line),var(--line-soft) 55%,transparent 88%)}
+.view{display:none}
+.view.active{display:block;animation:view-in .36s var(--ease)}
+@keyframes view-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.view.active>*{animation:rise-in .46s var(--ease-out) both}
+.view.active>*:nth-child(2){animation-delay:45ms}.view.active>*:nth-child(3){animation-delay:90ms}
+.view.active>*:nth-child(4){animation-delay:135ms}.view.active>*:nth-child(5){animation-delay:180ms}
+.view.active>*:nth-child(6){animation-delay:225ms}
+.view.active>*:nth-child(n+7){animation-delay:270ms}
+@keyframes rise-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.stats{display:flex;flex-wrap:wrap;padding:0;margin-bottom:18px;overflow:hidden;
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:0 1px 2px rgba(23,32,60,.04)}
+.stat{display:flex;flex-direction:column;gap:2px;padding:14px 22px;flex:1;min-width:112px;
+  border-right:1px solid var(--line-soft)}
+.stat:last-child{border-right:none}
+.stat-k{font-size:10px;color:var(--muted);letter-spacing:.09em}
+.stat-v{font-size:1.34rem;font-weight:600;font-family:var(--mono);
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em;color:var(--ink);line-height:1.35}
+.stat-v.ok{color:var(--ok)} .stat-v.warn{color:var(--warn)} .stat-v.bad{color:var(--bad)}
+.stat-n{font-size:11px;color:var(--faint);line-height:1.6}
+.stat--big .stat-v{font-size:2.15rem}
+.searchbar{display:flex;gap:8px;align-items:center;margin:0 0 16px;padding:8px;
+  border:1px solid var(--line);border-radius:12px;background:var(--card);
+  box-shadow:0 1px 2px rgba(23,32,60,.04)}
+.searchbar .input{flex:1;min-width:240px;border-color:transparent;background:var(--card-2)}
+.input,.select{height:36px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r-sm);
+  background:var(--card);font:inherit;font-size:13px;color:var(--ink);outline:none;
+  transition:border-color var(--dur-fast) var(--ease),box-shadow var(--dur-fast) var(--ease),
+    background var(--dur-fast)}
+.input::placeholder{color:var(--faint)}
+.input:focus,.select:focus{border-color:var(--accent-line);background:var(--card);
+  box-shadow:0 0 0 3px rgba(59,91,219,.12)}
+.select{font-family:var(--mono);font-size:12px;padding:0 8px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:34px;padding:0 15px;border:1px solid var(--line);border-radius:var(--r-sm);
+  background:var(--card);color:var(--ink-2);font:inherit;font-size:13px;cursor:pointer;
+  white-space:nowrap;
+  transition:transform var(--dur-fast) var(--ease-out),border-color var(--dur-fast),
+    color var(--dur-fast),background var(--dur-fast),box-shadow var(--dur-fast)}
+.btn:hover{transform:translateY(-1px);border-color:#c9d2e0;background:var(--raise);
+  color:var(--ink)}
+.btn:active{transform:translateY(0) scale(.975)}
+.btn--primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;
+  box-shadow:0 2px 8px rgba(59,91,219,.28)}
+.btn--primary:hover{background:#334fc4;border-color:#334fc4;color:#fff;
+  box-shadow:0 4px 14px rgba(59,91,219,.34)}
+.btn--ghost{background:transparent;border-color:var(--line-soft)}
+.btn--danger{border-color:var(--bad-soft);color:var(--bad)}
+.btn--danger:hover{background:var(--bad-soft);border-color:var(--bad);color:var(--bad)}
+.btn--sm{height:28px;padding:0 11px;font-size:12px;font-family:var(--mono)}
+.btn[disabled]{opacity:.38;cursor:not-allowed;transform:none}
+.panel{border:1px solid var(--line);border-radius:var(--r);background:var(--card);
+  overflow:hidden;box-shadow:0 1px 2px rgba(23,32,60,.04)}
+.panel+.panel{margin-top:16px}
+.panel-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;
+  padding:13px 18px;border-bottom:1px solid var(--line);background:var(--card-2)}
+.panel-title{font-size:13px;font-weight:600;color:var(--ink);line-height:1.5}
+.panel-meta{font-size:11px;color:var(--muted);margin-left:auto;font-family:var(--mono)}
+.panel-body{padding:16px 18px}
+.panel-foot{padding:10px 16px;border-top:1px solid var(--line-soft);font-size:11.5px;
+  color:var(--muted);line-height:1.7}
+.panel--quiet{background:transparent;border-style:dashed;box-shadow:none}
+.split{display:grid;grid-template-columns:minmax(0,1.62fr) minmax(0,1fr);gap:20px;
+  align-items:start}
+.split--even{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
+.list{display:flex;flex-direction:column;overflow:hidden;
+  border:1px solid var(--line);border-radius:var(--r);background:var(--card);
+  box-shadow:0 1px 2px rgba(23,32,60,.04)}
+.row{position:relative;padding:12px 18px 12px 20px;cursor:pointer;
+  border-bottom:1px solid var(--line-soft);
+  transition:background var(--dur-normal) var(--ease-soft)}
+.row:last-child{border-bottom:none}
+.row::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;
+  background:transparent;transition:background var(--dur-fast) var(--ease)}
+.row:hover{background:var(--raise)}
+.row:hover::before{background:var(--accent)}
+.row.is-selected{background:var(--raise);box-shadow:inset 0 0 0 1px rgba(59,91,219,.10)}
+.row.is-selected::before{background:var(--accent)}
+.row-top{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.row-title{font-size:13px;flex:1;min-width:0;color:var(--ink-2);line-height:1.6}
+.row:hover .row-title,.row.is-selected .row-title{color:var(--ink)}
+.row-id{font-family:var(--mono);font-size:10px;color:var(--faint);flex:none}
+.list .row{animation:row-in .28s var(--ease-out) both}
+.list .row:nth-child(2){animation-delay:24ms}.list .row:nth-child(3){animation-delay:48ms}
+.list .row:nth-child(4){animation-delay:72ms}.list .row:nth-child(5){animation-delay:96ms}
+.list .row:nth-child(6){animation-delay:120ms}.list .row:nth-child(7){animation-delay:144ms}
+.list .row:nth-child(8){animation-delay:168ms}.list .row:nth-child(9){animation-delay:192ms}
+.list .row:nth-child(n+10){animation-delay:216ms}
+@keyframes row-in{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
+.chips{display:flex;gap:5px;flex-wrap:wrap}
+.chip{font-size:10.5px;padding:1.5px 7px;border-radius:4px;white-space:nowrap;
+  font-family:var(--mono);background:var(--raise);color:var(--muted)}
+.chip.accent{background:var(--accent-soft);color:var(--accent)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}
+.chip.warn{background:var(--warn-soft);color:var(--warn)}
+.chip.bad{background:var(--bad-soft);color:var(--bad)}
+.chip.plain{background:transparent;color:var(--faint);box-shadow:inset 0 0 0 1px var(--line)}
+.tags{display:flex;gap:4px 14px;flex-wrap:wrap;margin-top:5px;align-items:center}
+.tag{font-size:10.5px;padding:0;color:var(--faint);font-family:var(--mono);
+  letter-spacing:.01em;white-space:nowrap;line-height:1.7}
+.tag.ok{color:var(--ok)}
+.tag.bad{padding:0 5px;border-radius:3px;background:var(--bad-soft);color:var(--bad)}
+.tag.accent{color:var(--accent)}
+.note{font-size:12px;color:var(--muted);line-height:1.8;margin:0;
+  padding:10px 14px;border-left:2px solid var(--line);border-radius:0 6px 6px 0;
+  background:linear-gradient(90deg,rgba(59,91,219,.035),transparent 70%)}
+.note.warn{border-left-color:var(--warn);background:var(--warn-soft);color:#9a5f0d}
+.note.bad{border-left-color:var(--bad);background:var(--bad-soft);color:#a03c3c}
+.note b{color:var(--ink)}
+.kv{display:grid;grid-template-columns:96px minmax(0,1fr);gap:8px 12px;margin:0;font-size:12px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;color:var(--ink-2);font-family:var(--mono);font-size:11.5px;
+  word-break:break-all;font-variant-numeric:tabular-nums}
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.tbl th{text-align:left;font-weight:500;color:var(--muted);font-size:9.5px;
+  letter-spacing:.08em;text-transform:uppercase;font-family:var(--mono);
+  padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td{padding:9px 10px;border-bottom:1px solid var(--line-soft);color:var(--ink-2);
+  vertical-align:baseline}
+.tbl tr:last-child td{border-bottom:none}
+.tbl td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;
+  white-space:nowrap}
+.tbl td.mono{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+.tbl tbody tr{transition:background var(--dur-fast) var(--ease-soft)}
+.tbl tbody tr:hover{background:rgba(59,91,219,.035)}
+.empty{padding:44px 20px;text-align:center;color:var(--muted);font-size:13px;line-height:1.9}
+.empty strong{display:block;color:var(--ink);font-size:13.5px;font-weight:600;margin-bottom:5px}
+.empty span{display:block;max-width:540px;margin:0 auto}
+.lamp{width:7px;height:7px;border-radius:50%;flex:none;display:inline-block;vertical-align:1px}
+.lamp.ok{background:var(--ok)} .lamp.warn{background:var(--warn)}
+.lamp.bad{background:var(--bad)} .lamp.off{background:var(--faint)}
+.bars{display:flex;align-items:flex-end;gap:6px;height:110px;padding-top:6px}
+.bar{flex:1;min-width:8px;height:100%;display:flex;flex-direction:column;
+  justify-content:flex-end;gap:2px}
+.bar-i{background:linear-gradient(to top,rgba(59,91,219,.45),var(--accent));
+  border-radius:2px 2px 0 0;min-height:2px}
+.bar-i.zero{background:var(--line)}
+.bar-x{font-family:var(--mono);font-size:9px;color:var(--faint);text-align:center;
+  white-space:nowrap;overflow:hidden;height:12px}
+.legend{display:flex;gap:14px;font-size:11px;color:var(--muted);margin-top:10px}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;
+  vertical-align:0}
+.rank{display:flex;align-items:baseline;gap:10px;padding:7px 0;
+  border-bottom:1px solid var(--line-soft);font-size:12.5px}
+.rank:last-child{border-bottom:none}
+.rank-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--ink-2)}
+.rank-n{font-family:var(--mono);font-size:11.5px;color:var(--muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.ev{display:flex;gap:14px;padding:11px 0;border-bottom:1px solid var(--line-soft)}
+.ev:last-child{border-bottom:none}
+.ev-when{font-family:var(--mono);font-size:11.5px;color:var(--faint);white-space:nowrap;
+  min-width:86px;padding-top:2px;font-variant-numeric:tabular-nums}
+.ev-main{flex:1;min-width:0}
+.ev-label{font-size:13px;color:var(--ink);line-height:1.5}
+.ev-note{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.7}
+.ev-delta{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.dl{font-family:var(--mono);font-size:10.5px;padding:1px 7px;border-radius:4px;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.dl.up{background:var(--ok-soft);color:var(--ok)}
+.dl.down{background:var(--bad-soft);color:var(--bad)}
+.switch-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.switch{display:flex;flex-direction:column;gap:6px;padding:14px 15px;
+  border:1px solid var(--line);border-radius:var(--r);background:var(--card);
+  transition:transform var(--dur-normal) var(--ease-out),border-color var(--dur-normal),
+    box-shadow var(--dur-normal)}
+.switch:hover{transform:translateY(-2px);border-color:rgba(59,91,219,.30);
+  box-shadow:0 10px 26px rgba(23,32,60,.09)}
+.switch-top{display:flex;align-items:baseline;gap:8px}
+.switch-name{font-size:13px;color:var(--ink);font-weight:560;flex:1}
+.switch-key{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+.switch-desc{font-size:11.5px;color:var(--muted);line-height:1.7}
+.switch-note{font-size:11px;color:var(--faint);line-height:1.7;
+  border-left:2px solid var(--line-soft);padding-left:8px}
+.switch .btn{align-self:flex-start;margin-top:2px}
+.duo{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0}
+.duo-col{padding:14px 16px}
+.duo-col+.duo-col{border-left:1px solid var(--line)}
+.duo-h{font-size:11px;color:var(--muted);letter-spacing:.06em;margin-bottom:10px}
+.allow{display:flex;flex-direction:column;gap:10px}
+.allow-i{padding:10px 12px;border:1px solid var(--line-soft);border-radius:var(--r-sm);
+  background:var(--card-2)}
+.allow-t{font-size:12.5px;color:var(--accent);font-weight:560;margin-bottom:3px}
+.allow-d{font-size:11.5px;color:var(--muted);line-height:1.7}
+.allow-r{font-size:11px;color:var(--faint);line-height:1.7;margin-top:4px;
+  border-top:1px solid var(--line-soft);padding-top:4px}
+.forbid{display:flex;flex-direction:column;gap:9px;font-size:12px;color:var(--ink-2);
+  line-height:1.75}
+.forbid-i{display:flex;gap:9px}
+.forbid-i::before{content:"";width:5px;height:5px;border-radius:1px;background:var(--bad);
+  flex:none;margin-top:7px}
+.budget{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+.budget-top{display:flex;align-items:baseline;gap:8px;font-size:12px}
+.budget-k{color:var(--muted);flex:1}
+.budget-num{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);
+  font-variant-numeric:tabular-nums}
+.budget-track{height:6px;border-radius:3px;background:var(--raise);overflow:hidden}
+.budget-fill{height:100%;border-radius:3px;
+  background:linear-gradient(90deg,var(--accent-2),var(--accent))}
+.budget-fill.over{background:var(--bad)}
+.vs{display:grid;grid-template-columns:minmax(0,1fr) 40px minmax(0,1fr);gap:0;
+  align-items:stretch}
+.vs-card{padding:14px 16px;border:1px solid var(--line);border-radius:var(--r);
+  background:var(--card);display:flex;flex-direction:column;gap:8px}
+.vs-mid{display:grid;place-items:center;color:var(--faint);font-size:15px}
+.vs-side{font-size:10.5px;color:var(--faint);letter-spacing:.06em;font-family:var(--mono)}
+.vs-body{font-size:12.5px;color:var(--ink-2);line-height:1.75}
+.vs-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.foot{margin-top:48px;padding-top:22px;border-top:1px solid var(--line);
+  display:flex;gap:16px;flex-wrap:wrap;align-items:center;
+  font-family:var(--mono);font-size:9px;letter-spacing:.06em;color:var(--faint)}
+.foot::before{content:"";width:5px;height:5px;background:var(--accent)}
+@media(max-width:980px){
+  .split,.split--even,.grid2,.grid3{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:900px){
+  .head{grid-template-columns:1fr}
+  .head>.sub{justify-self:start;text-align:left;max-width:62ch}
+  .nav{top:8px;margin-top:18px;overflow-x:auto;justify-content:flex-start;
+    mask-image:linear-gradient(90deg,#000 82%,transparent 97%);
+    -webkit-mask-image:linear-gradient(90deg,#000 82%,transparent 97%)}
+  .navlink{flex:0 0 auto;min-width:64px}
+  .switch-grid{grid-template-columns:minmax(0,1fr)}
+  .duo{grid-template-columns:minmax(0,1fr)}
+  .duo-col+.duo-col{border-left:none;border-top:1px solid var(--line)}
+  .vs{grid-template-columns:minmax(0,1fr)}
+  .vs-mid{display:none}
+}
+@media(max-width:800px){
+  .wrap{padding:18px 16px 44px}
+  .system-state span{display:none}
+  .path{margin-bottom:16px}
+}
+@media(max-width:560px){
+  .brandbar{min-height:48px;padding-bottom:14px}
+  .brandname{font-size:.68rem}
+  .system-state{font-size:8px}
+  .head{margin-top:22px}
+  .head-kicker{font-size:.54rem}
+  h1{font-size:1.6rem}
+  .path{margin:14px 0 18px}
+  .searchbar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:stretch}
+  .searchbar .input{grid-column:1/-1;min-width:0}
+  .searchbar .btn{width:100%;min-height:42px}
+  .stat{min-width:46%;padding:13px 16px}
+  .stat:nth-child(2n){border-right:none}
+  .stat-v{font-size:1.12rem}
+  .panel-body{padding:16px}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;
+    animation-iteration-count:1!important;transition-duration:.01ms!important;
+    scroll-behavior:auto!important}
+  .view.active>*{animation:none}
+}
 /* ══ THEME:END ══ */
-/* ── 这一页自己的部分：诊断条 / 卡片 / 标签 / 候选 / 评分 / 分层 / 冲突 / 关系四维 / 决策 / 表格 ──
-   骨架（底、标题区、路径行、页脚、导航、滚动条、焦点环）在标记区里，这里不重复。 */
+/* ── 这一页自己的部分：诊断条 / 候选卡 / 评分拆解 / 通道表单 / 关系四维 / 决策五态 ──
+   骨架与通用组件（面板、徽章、按钮、表格、说明、空态）在标记区里，这里不重复。 */
 
-/* 诊断条：左边一道 2px 状态线。整块换底色会跟卡片抢层级，这里只标记边缘。 */
-.diag{margin:0 0 16px;padding:11px 16px;border-radius:var(--r-sm);font-size:13px;
-  background:var(--card);border:1px solid var(--line);border-left:2px solid var(--line-2);line-height:1.7}
-.diag.warn{border-left-color:var(--warn);background:var(--warn-soft);color:var(--warn)}
+/* 诊断条：左缘一道 2px 状态线。整块换底色会跟面板抢层级，这里只标边缘。 */
+.diag{margin:0 0 16px;padding:10px 14px;border-radius:var(--r-sm);font-size:13px;
+  background:var(--card);border:1px solid var(--line);border-left:2px solid var(--line);
+  line-height:1.6;box-shadow:0 1px 2px rgba(23,32,60,.04)}
+.diag.warn{border-left-color:var(--warn);background:var(--warn-soft);color:#9a5f0d}
+.diag.bad{border-left-color:var(--bad);background:var(--bad-soft);color:#a03c3c}
+
+/* 顶部开关行：一排 chip。闸门 chip 说的是「这条候选过没过」，开关 chip 说的是「放不放行」。 */
 .gate-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+.gate{font-family:var(--mono);font-size:10.5px;padding:1.5px 7px;border-radius:4px;
+  background:var(--raise);color:var(--muted);line-height:1.6;white-space:nowrap}
+.gate.pass{background:var(--ok-soft);color:var(--ok)}
+.gate.fail{background:var(--bad-soft);color:var(--bad)}
 
-/* 卡片：1px 细线分层，不用阴影——暗底上的阴影只会糊成一团。圆角只有两档。 */
-.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
-  margin-bottom:16px;overflow:hidden}
-.card.social-card{border-color:var(--line-2)}
-.card-head{display:flex;align-items:baseline;gap:10px;padding:11px 17px;
-  border-bottom:1px solid var(--line);background:var(--card-2);flex-wrap:wrap}
-.card-title{font-size:13px;font-weight:600;letter-spacing:-.005em}
-.card-meta{font-size:10.5px;color:var(--faint);margin-left:auto;font-family:var(--mono);
-  letter-spacing:.01em}
-.body{padding:14px 17px 17px}
+/* ── 开关条（2026-11-02 重做）──
+   一排白面板，每格是「标签 + 拨杆 + 状态字」。
+   拨杆的位置本身就是状态：左=关、右=开，看得出是能拨的东西，不用先猜哪里能点。
+   关用灰、开用靛蓝；「全局暂停」是紧急闸，开着时转红。 */
+.sw-bar{display:flex;flex-wrap:wrap;margin:0 0 9px;border:1px solid var(--line);
+  border-radius:10px;background:var(--card);overflow:hidden;
+  box-shadow:0 1px 2px rgba(23,32,60,.04)}
+.sw{position:relative;display:flex;align-items:center;gap:12px;flex:1 1 176px;
+  padding:12px 16px;border:none;border-right:1px solid var(--line-soft);
+  background:transparent;font:inherit;cursor:pointer;text-align:left;
+  transition:background var(--dur-fast) var(--ease-soft)}
+.sw:last-child{border-right:none}
+.sw:hover{background:var(--raise)}
+.sw:focus-visible{outline:1.5px solid var(--accent-line);outline-offset:-3px}
+.sw-k{font-size:12.5px;color:var(--ink-2);letter-spacing:.02em;white-space:nowrap}
+.sw-t{position:relative;flex:none;width:38px;height:20px;border-radius:999px;
+  background:#d3dae4;transition:background var(--dur-normal) var(--ease-soft)}
+.sw-t i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 3px rgba(16,24,40,.3);
+  transition:transform var(--dur-normal) var(--ease-out)}
+.sw.on .sw-t{background:var(--accent)}
+.sw.on .sw-t i{transform:translateX(18px)}
+.sw-s{margin-left:auto;font:10px var(--mono);letter-spacing:.08em;color:var(--muted)}
+.sw.on .sw-s{color:var(--ok)}
+/* 全局暂停是紧急闸：开着时拨杆转红，跟另外两个「放行型」开关分开读 */
+.sw[data-switch="paused"].on .sw-t{background:var(--bad)}
+.sw[data-switch="paused"].on .sw-s{color:var(--bad)}
+/* 两步确认：第一次点不破坏内部结构，只罩一层「再点一次」 */
+.sw.armed{background:var(--bad-soft)}
+.sw.armed>*{opacity:0}
+.sw.armed::before{content:"再点一次确认";position:absolute;inset:0;display:grid;
+  place-items:center;font-size:11.5px;font-weight:600;color:var(--bad);letter-spacing:.04em}
+/* 只读信息（外发能力 / 真发会不会被拦）：从开关排里挪出来单独一行，
+   免得跟可点控件抢权重——一排里混着「能点的」和「只能看的」是最容易点错的设计。 */
+.gate-note{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
+/* 卡片内的小一号：跟页头那排形成层级，不至于两排一样重 */
+.sw-bar--compact .sw{padding:9px 14px;gap:9px}
+.sw-bar--compact .sw-k{font-size:12px}
+.sw-bar--compact .sw-t{width:34px;height:18px}
+.sw-bar--compact .sw-t i{width:14px;height:14px}
+.sw-bar--compact .sw.on .sw-t i{transform:translateX(16px)}
 
-/* 标签：等宽小字 + 软底。默认中性——一条候选上同时挂着来源/分数/话题三种，
-   全都上色就成了彩带；只有「开关状态」这种要人停一下的才给色。 */
-.chip{display:inline-block;font-family:var(--mono);font-size:10.5px;padding:1.5px 7px;
-  border-radius:4px;border:1px solid transparent;color:var(--muted);background:var(--raise);
-  white-space:nowrap;line-height:1.6;letter-spacing:.01em;font-variant-numeric:tabular-nums}
-.chip.ok{color:var(--ok);background:var(--ok-soft)}
-.chip.bad{color:var(--bad);background:var(--bad-soft)}
-.chip.kind{color:var(--accent);background:var(--accent-soft)}
-/* 可点开关：视觉上跟只读 chip 一致，但能点、有悬停反馈、armed 时提醒「再点一次」 */
-.chip-btn{font:inherit;font-family:var(--mono);font-size:10.5px;background:transparent;
-  border:1px solid var(--line);color:inherit;cursor:pointer;padding:1.5px 7px;
-  border-radius:4px;line-height:1.6;
-  transition:background .14s var(--ease),border-color .14s var(--ease),color .14s var(--ease)}
-.chip-btn:hover{background:var(--raise);border-color:var(--line-2);color:var(--ink)}
-.chip-btn:active{transform:translateY(.5px)}
-.chip-btn.armed{background:var(--bad-soft);border-color:var(--bad);color:var(--bad)}
-/* 策略编辑器：4 个阈值 + 免打扰时段。跟开关分开——开关是「放不放行」，这些是「闸门放多宽」 */
+/* 策略 / 通道 / 主动送达表单：开关是「放不放行」，这些是「闸门放多宽」，所以分开放。 */
 .policy-box{margin:10px 0 4px;padding:12px 14px;border:1px solid var(--line);
   border-radius:var(--r-sm);background:var(--card-2)}
 .policy-head{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-bottom:9px;
   letter-spacing:.06em;text-transform:uppercase}
 .policy-grid{display:flex;flex-wrap:wrap;gap:10px 14px}
 .pol-field{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted)}
-.pol-field input,.pol-field select{padding:5px 8px;border:1px solid var(--line);
-  border-radius:var(--r-sm);font:inherit;font-size:12px;color:var(--ink);background:var(--sunken);
-  outline:none;transition:border-color .14s var(--ease)}
+.pol-field input,.pol-field select{height:32px;padding:0 9px;border:1px solid var(--line);
+  border-radius:var(--r-sm);font:inherit;font-size:12px;color:var(--ink);background:var(--card);
+  outline:none;transition:border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease)}
 .pol-field input{width:112px}
 .pol-field select{min-width:150px;cursor:pointer}
 .pol-field.wide input{width:300px}
-.pol-field input:focus,.pol-field select:focus{border-color:var(--accent-line)}
+.pol-field input:focus,.pol-field select:focus{border-color:var(--accent-line);
+  box-shadow:0 0 0 3px rgba(59,91,219,.12)}
 .policy-actions{display:flex;align-items:center;gap:10px;margin-top:11px;flex-wrap:wrap}
+.policy-note{font-size:11px;color:var(--muted);line-height:1.7}
+
 .override-editor{margin-top:10px}
 .override-editor textarea{width:100%;box-sizing:border-box;font:inherit;font-family:var(--mono);
   font-size:12.5px;line-height:1.65;padding:9px 11px;border:1px solid var(--line);
-  border-radius:var(--r-sm);background:var(--sunken);color:var(--ink);resize:vertical;
-  outline:none;transition:border-color .14s var(--ease)}
-.override-editor textarea:focus{border-color:var(--accent-line)}
+  border-radius:var(--r-sm);background:var(--card);color:var(--ink);resize:vertical;
+  outline:none;transition:border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease)}
+.override-editor textarea:focus{border-color:var(--accent-line);
+  box-shadow:0 0 0 3px rgba(59,91,219,.12)}
 .override-actions{display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap}
 .override-hint{font-size:11px;color:var(--muted)}
-.policy-note{font-size:11px;color:var(--muted);line-height:1.65}
 
+/* 候选卡：一句话 + 来源/分数/话题 + 三个动作。would-say 用靛蓝软底标出
+   「如果开关全开，它本来会发这句」——这是这页最要紧的一眼。 */
 .social{border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 15px;
-  margin-bottom:9px;background:var(--card-2);transition:border-color .14s var(--ease)}
-.social:hover{border-color:var(--line-2)}
+  margin-bottom:9px;background:var(--card-2);
+  transition:border-color var(--dur-fast) var(--ease-soft)}
+.social:hover{border-color:var(--accent-line)}
 .social.would-say{border-color:var(--accent-line);background:var(--accent-soft)}
 .social-top{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .social-text{font-size:13.5px;line-height:1.72;margin-top:8px;word-break:break-word;
@@ -1026,9 +1399,9 @@ h1::before{content:"";width:5px;height:5px;border-radius:1px;background:var(--ac
   font-variant-numeric:tabular-nums}
 .social-meta b{font-family:var(--mono);font-weight:550;color:var(--ink);margin-left:4px}
 .social-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
-/* 发送结果就贴在卡片里：成功/被拒原因/note 三行都在这儿，翻不到别的地方去核对 */
+/* 发送结果贴在候选卡里：成功 / 被拒原因 / note 三行都在原地，不用翻别处核对。 */
 .send-out{display:none;margin-top:9px;border-radius:var(--r-sm);border:1px solid var(--line);
-  background:var(--raise);padding:8px 11px;font-size:12px;line-height:1.6}
+  background:var(--raise);padding:8px 11px;font-size:12px;line-height:1.7}
 .send-out.show{display:block}
 .send-line{color:var(--ink-2)}
 .send-line.ok{color:var(--ok)}
@@ -1043,11 +1416,20 @@ h1::before{content:"";width:5px;height:5px;border-radius:1px;background:var(--ac
   margin-bottom:8px;letter-spacing:.06em;text-transform:uppercase}
 .sub-block{margin-top:16px}
 .sub-title{font-size:12.5px;font-weight:600;margin-bottom:8px;color:var(--ink)}
+/* 已结束的候选：默认收起。折叠块用 <details>，不写 JS——浏览器自己管展开状态。 */
+.closed-list{margin-top:12px;border:1px solid var(--line-soft);border-radius:var(--r-sm);
+  padding:0 13px;background:var(--card-2)}
+.closed-list>summary{cursor:pointer;padding:10px 0;font-size:12px;color:var(--muted);
+  user-select:none;list-style-position:inside}
+.closed-list>summary:hover{color:var(--ink)}
+.closed-list[open]>summary{border-bottom:1px solid var(--line-soft);margin-bottom:10px}
+.closed-list .social{margin-bottom:10px;background:var(--card)}
 .note-inline{font-size:11px;color:var(--muted);margin-top:12px;
   border-left:2px solid var(--line);padding-left:10px;line-height:1.7}
 .skip{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;font-size:11px;color:var(--muted)}
 
-.score-box{margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
+/* 评分拆解：加权项（绿加 / 红减）+ 闸门（✓ 过 / ✗ 拦）。数字一律等宽。 */
+.score-box{margin-top:10px;border-top:1px solid var(--line-soft);padding-top:10px}
 .score-chips{display:flex;gap:5px;flex-wrap:wrap}
 .score-chip{font-family:var(--mono);font-size:10.5px;padding:1.5px 7px;border-radius:4px;
   color:var(--muted);background:var(--raise);white-space:nowrap;line-height:1.6;
@@ -1056,14 +1438,11 @@ h1::before{content:"";width:5px;height:5px;border-radius:1px;background:var(--ac
 .score-chip.up{color:var(--ok);background:var(--ok-soft)}
 .score-chip.down{color:var(--bad);background:var(--bad-soft)}
 .score-gates{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
-.gate{font-family:var(--mono);font-size:10.5px;padding:1.5px 7px;border-radius:4px;
-  background:var(--raise);color:var(--muted);line-height:1.6}
-.gate.pass{background:var(--ok-soft);color:var(--ok)}
-.gate.fail{background:var(--bad-soft);color:var(--bad)}
 .score-meta{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:8px;
   word-break:break-word;font-variant-numeric:tabular-nums}
 .score-empty{font-size:11px;color:var(--muted);margin-top:8px}
 
+/* 人格版本：版本 chip 行 + 五层内容。层用 --card-2 底，跟外层白面板隔一档。 */
 .ver-bar{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
 .layers{display:grid;grid-template-columns:1fr;gap:7px;margin-top:8px}
 .layer{border:1px solid var(--line);border-radius:var(--r-sm);padding:11px 14px;
@@ -1071,7 +1450,7 @@ h1::before{content:"";width:5px;height:5px;border-radius:1px;background:var(--ac
 .layer-head{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:6px}
 .layer-head b{font-size:12.5px;font-weight:600}
 .layer-key{font-family:var(--mono);font-size:10.5px;color:var(--faint);letter-spacing:.02em}
-.layer-note{font-size:11px;color:var(--muted);margin-left:auto;line-height:1.6}
+.layer-note{font-size:11px;color:var(--muted);margin-left:auto;line-height:1.7}
 .layer-row{display:flex;gap:10px;padding:4px 0;font-size:12.5px;
   border-bottom:1px dotted var(--line)}
 .layer-row:last-child{border-bottom:none}
@@ -1080,70 +1459,58 @@ h1::before{content:"";width:5px;height:5px;border-radius:1px;background:var(--ac
 .layer-value{flex:1;word-break:break-word;color:var(--ink-2)}
 .layer-empty{font-size:11px;color:var(--faint)}
 
+/* 冲突：旧值 / 新值两行对照。不下判断，只把差异摊开等人来点。 */
 .conflict{border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 15px;
   margin-bottom:9px;background:var(--card-2)}
 .conflict-top{display:flex;gap:9px;flex-wrap:wrap;align-items:baseline}
 .conflict-field{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
 .conflict-diff{margin-top:8px;display:grid;gap:5px}
-.conflict-diff>div{font-size:12.5px;padding:7px 10px;background:var(--raise);
-  border-radius:var(--r-sm);word-break:break-word;color:var(--ink-2)}
+.conflict-diff>div{font-size:12.5px;padding:7px 10px;background:var(--card);
+  border:1px solid var(--line-soft);border-radius:var(--r-sm);word-break:break-word;
+  color:var(--ink-2)}
 .conflict-diff .diff-k{display:inline;font-family:var(--mono);font-size:10.5px;
   color:var(--faint);margin-right:8px;letter-spacing:.04em}
 
-.rel{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
-@media(max-width:720px){.rel{grid-template-columns:1fr}}
+/* 关系四维：四条各自独立，绝不合并成一个数字。 */
+.rel{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+@media(max-width:720px){.rel{grid-template-columns:minmax(0,1fr)}}
 .rel-row{min-width:0}
 .rel-head{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
 .rel-label{font-size:12.5px;font-weight:560}
 .rel-value{font-family:var(--mono);font-size:11.5px;color:var(--accent);margin-left:auto;
   font-variant-numeric:tabular-nums;letter-spacing:-.01em}
-.rel-bar{height:6px;border-radius:2px;background:var(--sunken);border:1px solid var(--line);
-  overflow:hidden}
-.rel-bar span{display:block;height:100%;background:var(--accent);border-radius:1px}
-.rel-hint{font-size:10.5px;color:var(--faint);margin-top:6px;line-height:1.6}
+.rel-bar{height:6px;border-radius:3px;background:var(--raise);overflow:hidden}
+.rel-bar span{display:block;height:100%;border-radius:3px;
+  background:linear-gradient(90deg,var(--accent-2),var(--accent))}
+.rel-hint{font-size:10.5px;color:var(--faint);margin-top:6px;line-height:1.7}
 
+/* 回复决策五态：一条一色，同色系深浅区分「全回 / 简短回」，不引入第二种彩色。 */
 .dec{display:grid;gap:8px}
 .dec-row{display:flex;align-items:center;gap:10px}
 .dec-label{font-size:12px;min-width:70px;color:var(--ink-2)}
-.dec-bar{flex:1;height:6px;border-radius:2px;background:var(--sunken);
-  border:1px solid var(--line);overflow:hidden;min-width:60px}
+.dec-bar{flex:1;height:6px;border-radius:3px;background:var(--raise);overflow:hidden;
+  min-width:60px}
 .dec-bar span{display:block;height:100%}
 .dec-reply{background:var(--ok)}
-.dec-brief_reply{background:rgba(92,192,140,.42)}
+.dec-brief_reply{background:rgba(47,158,99,.42)}
 .dec-delay{background:var(--accent)}
-.dec-decline{background:rgba(227,166,98,.38)}
+.dec-decline{background:rgba(221,127,14,.42)}
 .dec-silent{background:var(--faint)}
 .dec-count{font-family:var(--mono);font-size:11.5px;min-width:34px;text-align:right;
   font-variant-numeric:tabular-nums;color:var(--muted)}
 
-.btn{font:inherit;font-size:12.5px;padding:6px 13px;border-radius:var(--r-sm);
-  border:1px solid var(--line);background:var(--card);color:var(--ink-2);cursor:pointer;
-  transition:border-color .14s var(--ease),background .14s var(--ease),color .14s var(--ease)}
-.btn:hover{border-color:var(--line-2);background:var(--raise);color:var(--ink)}
-.btn:active{transform:translateY(.5px)}
-.btn.small{font-size:11.5px;padding:5px 11px}
-.btn.danger:hover{border-color:var(--bad);background:var(--bad-soft);color:var(--bad)}
+/* 两步确认：armed 时整颗按钮转红，提醒「再点一次就真发」 */
 .btn.armed{border-color:var(--bad);background:var(--bad-soft);color:var(--bad);font-weight:600}
-.btn[disabled]{opacity:.4;cursor:not-allowed}
-.btn[disabled]:hover{border-color:var(--line);background:var(--card);color:var(--ink-2)}
 
+/* 表格里只有三列需要页内微调：标题折行、时间等宽、次要说明降一档 */
 .tbl-wrap{overflow-x:auto}
-.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
-.tbl th{text-align:left;font-weight:600;color:var(--muted);font-size:10.5px;
-  letter-spacing:.07em;text-transform:uppercase;padding:8px 10px;
-  border-bottom:1px solid var(--line);white-space:nowrap;font-family:var(--mono)}
-.tbl td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
-.tbl tr:last-child td{border-bottom:none}
-.tbl tbody tr:hover td{background:var(--raise)}
 .tbl td.title{max-width:420px;word-break:break-word}
 .tbl td.when{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;
   font-variant-numeric:tabular-nums}
 .tbl td.muted{color:var(--muted);font-size:11px}
 
-.empty{padding:34px 0 36px;text-align:center;color:var(--muted);font-size:12.5px;line-height:1.9}
-.empty strong{display:block;color:var(--ink);font-size:13.5px;font-weight:600;margin-bottom:6px}
-.empty span{display:block;max-width:600px;margin:0 auto}
-#err{display:none;margin:0 0 16px;padding:11px 16px;border-radius:var(--r-sm);
+/* 出错条与 dry-run 预演框：都贴在页面顶部，只出现一次，不跟候选卡抢注意力 */
+#err{display:none;margin:0 0 16px;padding:10px 14px;border-radius:var(--r-sm);
   border:1px solid var(--line);border-left:2px solid var(--bad);background:var(--bad-soft);
   color:var(--bad);font-size:12.5px;line-height:1.6}
 #err.show{display:block}
@@ -1156,21 +1523,15 @@ h1::before{content:"";width:5px;height:5px;border-radius:1px;background:var(--ac
 .dry-line b{font-family:var(--mono);font-size:12.5px}
 .dry-meta{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:8px;line-height:1.7;
   font-variant-numeric:tabular-nums}
-
-.note{font-size:11.5px;color:var(--muted);margin:16px 0 0;padding:13px 17px;
-  border-left:2px solid var(--line);line-height:1.85;background:var(--card-2)}
-.note b{color:var(--ink-2);font-weight:600}
-.note code{font-family:var(--mono);font-size:11px;background:var(--raise);padding:1px 5px;
-  border-radius:4px;color:var(--ink-2)}
 </style>
 </head>
 <body>
 <div class="wrap wrap-wide">
-  <div class="head">
-    <h1>人格与主动社交</h1>
-    <span class="sub">人格版本 · 冲突 · 关系四维 · 主动开口演算 · 回复决策</span>
-    ${renderNav({ active: 'persona' })}
-  </div>
+  ${renderPageHead({
+    active: 'persona',
+    title: '人格与主动社交',
+    sub: '人格版本 · 冲突 · 关系四维 · 主动开口演算 · 回复决策'
+  })}
   <div class="path">scope: ${esc(scopeId)} · person: ${esc(personId)} · /dsh-brain/api/persona · 生成于 ${esc(fmtWhen(v.at))}</div>
 
   <div id="err"></div>
@@ -1181,44 +1542,44 @@ h1::before{content:"";width:5px;height:5px;border-radius:1px;background:var(--ac
 
   <div id="dry-out"></div>
 
-  <div class="card social-card">
-    <div class="card-head">
-      <span class="card-title">主动社交候选</span>
-      <span class="card-meta">预演只读 · 批准发送走 QQ 单聊（dsh-im 主动投递）</span>
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title">主动社交候选</span>
+      <span class="panel-meta">预演只读 · 批准发送走已配置的聊天通道（dsh-im 主动投递）</span>
     </div>
-    <div class="body">${socialPanel(v.social)}</div>
+    <div class="panel-body">${socialPanel(v.social)}</div>
   </div>
 
-  <div class="card">
-    <div class="card-head">
-      <span class="card-title">当前激活人格版本</span>
-      <span class="card-meta">${v.activeVersion ? 'v' + esc(num(v.activeVersion.version)) : '没有激活版本'}</span>
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title">当前激活人格版本</span>
+      <span class="panel-meta">${v.activeVersion ? 'v' + esc(num(v.activeVersion.version)) : '没有激活版本'}</span>
     </div>
-    <div class="body">${versionPanel(v.activeVersion, v.profiles, v.versions)}</div>
+    <div class="panel-body">${versionPanel(v.activeVersion, v.profiles, v.versions)}</div>
   </div>
 
-  <div class="card">
-    <div class="card-head">
-      <span class="card-title">人格冲突</span>
-      <span class="card-meta">${esc(String(v.conflicts.length))} 条</span>
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title">人格冲突</span>
+      <span class="panel-meta">${esc(String(v.conflicts.length))} 条</span>
     </div>
-    <div class="body">${conflictsPanel(v.conflicts)}</div>
+    <div class="panel-body">${conflictsPanel(v.conflicts)}</div>
   </div>
 
-  <div class="card">
-    <div class="card-head">
-      <span class="card-title">关系四维</span>
-      <span class="card-meta">不合并成一个数字</span>
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title">关系四维</span>
+      <span class="panel-meta">不合并成一个数字</span>
     </div>
-    <div class="body">${relationshipPanel(v.relationship)}</div>
+    <div class="panel-body">${relationshipPanel(v.relationship)}</div>
   </div>
 
-  <div class="card">
-    <div class="card-head">
-      <span class="card-title">回复决策历史</span>
-      <span class="card-meta">五态占比 · 保护类不许沉默</span>
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title">回复决策历史</span>
+      <span class="panel-meta">五态占比 · 保护类不许沉默</span>
     </div>
-    <div class="body">${decisionsPanel(v.responseStats)}</div>
+    <div class="panel-body">${decisionsPanel(v.responseStats)}</div>
   </div>
 
   <p class="note">
@@ -1228,7 +1589,7 @@ h1::before{content:"";width:5px;height:5px;border-radius:1px;background:var(--ac
     所以随时可以按「如果现在发会怎样」。
     <b>发送分两档</b>：「试发」只写一条 <code>delivery_mode=dry_run</code> 的记录，
     一个字都不发；「批准并发送」先过策略闸（免打扰 / 每日上限 / 冷却 / 待批准上限），
-    过了才经 <b>QQ 单聊通道</b>（dsh-im 主动投递）发给你本人；通道失败会回落本机落盘并
+    过了才经 <b>已配置的聊天通道</b>（dsh-im 主动投递）发给你本人；通道失败会回落本机落盘并
     <b>如实报错</b>。被闸门拦下时页面会照实写出拦在哪一道，不会显示成成功。
   </p>
 
@@ -1289,7 +1650,7 @@ h1::before{content:"";width:5px;height:5px;border-radius:1px;background:var(--ac
     host.appendChild(el('div', 'dry-meta', 'dry-run 全程只读：没有写任何业务行，也没有真发出去。'));
   }
 
-  function send(url, body, onOk){
+  function send(url, body, onOk, btn){
     clearErr();
     fetch(url, {
       method: 'POST',
@@ -1304,6 +1665,14 @@ h1::before{content:"";width:5px;height:5px;border-radius:1px;background:var(--ac
       else location.reload();
     }).catch(function(error){
       errBox('操作没成功：' + ((error && error.message) ? error.message : String(error)));
+      // 失败要把按钮从「再点一次：X」的 armed 态复位。不复位的话它会永远停在
+      // 那片红色里：armed 变量早在执行前就置 null 了，再点一下只是重新上膛，
+      // 人看到的是「按钮卡死」。cognition / directives / workspace 三页都有复位，
+      // 就这页漏了。
+      if (btn && btn.getAttribute && btn.getAttribute('data-original')){
+        btn.className = btn.getAttribute('data-base-class') || 'btn btn--sm';
+        btn.textContent = btn.getAttribute('data-original');
+      }
     });
   }
 
@@ -1368,7 +1737,7 @@ h1::before{content:"";width:5px;height:5px;border-radius:1px;background:var(--ac
               + String(result.recordError || '未知原因') + '。这条需要人工记一下。'
           });
         } else {
-          lines.push({ cls: 'send-line ok', text: '已通过 QQ 单聊发出（dsh-im 主动投递）。' });
+          lines.push({ cls: 'send-line ok', text: '已通过 dsh-im 投递到已配置的聊天通道。' });
         }
       } else {
         var why = result && result.reason
@@ -1393,20 +1762,23 @@ h1::before{content:"";width:5px;height:5px;border-radius:1px;background:var(--ac
     armedSend = null;
     if (!btn) return;
     btn.textContent = btn.getAttribute('data-send-original') || '批准并发送';
-    btn.className = btn.getAttribute('data-send-class') || 'btn small danger';
+    btn.className = btn.getAttribute('data-send-class') || 'btn btn--sm btn--danger';
     var box = document.querySelector('.send-out[data-send-out="' + (btn.getAttribute('data-id') || '') + '"]');
     if (box){ box.className = 'send-out'; box.textContent = ''; }
   }
   function armSend(btn){
     if (!btn.getAttribute('data-send-original')) btn.setAttribute('data-send-original', btn.textContent || '批准并发送');
-    if (!btn.getAttribute('data-send-class')) btn.setAttribute('data-send-class', btn.className || 'btn small danger');
+    if (!btn.getAttribute('data-send-class')) btn.setAttribute('data-send-class', btn.className || 'btn btn--sm btn--danger');
     if (armedSend && armedSend !== btn) disarmSend();
     armedSend = btn;
-    btn.className = 'btn small danger armed';
+    btn.className = 'btn btn--sm btn--danger armed';
     btn.textContent = '再点一次就真发';
     showSendOut(btn.getAttribute('data-id') || '', [{
       cls: 'send-line warn',
-      text: '这一步会：过一遍策略闸（免打扰 / 每日上限 / 冷却 / 待批准上限）→ 写一条 social_sends 记录 → 追加到 data/logs/social-outbox.jsonl。不会发往任何第三方账号。3 秒内不再点就自动取消。'
+      // 这段提示原来写反了：说「不会发出去」，而 approved 分支走的是
+      // channelHook → dsh-im → 通道配置里那个真实聊天目标。它恰好出现在
+      // 「真发」的确认那一刻，骗人就骗在最重要的位置。
+      text: '这一步会真的发出去：先按现在的时间重过一遍策略闸（免打扰 / 每日上限 / 冷却 / 是否已过期）→ 写一条 social_sends 记录 → 经 dsh-im 投递到上面「通道配置」里那个聊天目标。3 秒内不再点就自动取消。'
     }]);
     window.setTimeout(function(){ if (armedSend === btn) disarmSend(); }, 3000);
   }
@@ -1468,8 +1840,15 @@ h1::before{content:"";width:5px;height:5px;border-radius:1px;background:var(--ac
   }
   function disarm(btn){
     if (!btn) return;
+    // 开关条（.sw）内部是 span 结构（标签 / 拨杆 / 状态字）：textContent 和 className
+    // 一覆盖，拨杆就没了。它的 armed 只是一个提示类，撤掉就行。
+    if (btn.classList && btn.classList.contains('sw')){
+      btn.classList.remove('armed');
+      if (armed === btn) armed = null;
+      return;
+    }
     btn.textContent = btn.getAttribute('data-original') || '操作';
-    btn.className = btn.getAttribute('data-base-class') || 'btn small';
+    btn.className = btn.getAttribute('data-base-class') || 'btn btn--sm';
     if (armed === btn) armed = null;
   }
   // 通道区块：页面加载后填当前配置（服务端渲染时拿不到——它是插件运行参数，不在人格门面里）。
@@ -1556,17 +1935,17 @@ h1::before{content:"";width:5px;height:5px;border-radius:1px;background:var(--ac
       var swNext = btn.getAttribute('data-next') || '';
       var swLabel = btn.getAttribute('data-label') || swName;
       if (!swName || (swNext !== '0' && swNext !== '1')) return;
-      if (!btn.getAttribute('data-original')) btn.setAttribute('data-original', btn.textContent || swLabel);
-      if (!btn.getAttribute('data-base-class')) btn.setAttribute('data-base-class', btn.className || 'chip chip-btn');
       if (armed !== btn){
         if (armed) disarm(armed);
         armed = btn;
-        btn.className = 'chip chip-btn armed';
-        btn.textContent = '再点一次：' + swLabel + ' ' + (swNext === '1' ? '开' : '关');
+        // 只加类，不改 textContent / className：开关条内部是 span 结构，
+        // 一覆盖拨杆和状态字就没了。提示语由 CSS 的 .sw.armed::before 画。
+        btn.classList.add('armed');
         window.setTimeout(function(){ if (armed === btn) disarm(btn); }, 4000);
         return;
       }
       armed = null;
+      btn.classList.remove('armed');
       send('/dsh-brain/api/workspace/switch', {
         name: swName,
         value: swNext,
@@ -1582,16 +1961,16 @@ h1::before{content:"";width:5px;height:5px;border-radius:1px;background:var(--ac
       var sendBtn = btn;
       armedSend = null;
       sendBtn.textContent = sendBtn.getAttribute('data-send-original') || '批准并发送';
-      sendBtn.className = sendBtn.getAttribute('data-send-class') || 'btn small danger';
+      sendBtn.className = sendBtn.getAttribute('data-send-class') || 'btn btn--sm btn--danger';
       postSend(sendBtn, 'approved');
       return;
     }
     if (!btn.getAttribute('data-original')) btn.setAttribute('data-original', btn.textContent || '操作');
-    if (!btn.getAttribute('data-base-class')) btn.setAttribute('data-base-class', btn.className || 'btn small');
+    if (!btn.getAttribute('data-base-class')) btn.setAttribute('data-base-class', btn.className || 'btn btn--sm');
     if (armed !== btn){
       if (armed) disarm(armed);
       armed = btn;
-      btn.className = 'btn small armed';
+      btn.className = 'btn btn--sm armed';
       btn.textContent = '再点一次：' + (btn.getAttribute('data-confirm') || '确认');
       window.setTimeout(function(){ if (armed === btn) disarm(btn); }, 4000);
       return;
@@ -1617,7 +1996,7 @@ h1::before{content:"";width:5px;height:5px;border-radius:1px;background:var(--ac
       if (act === 'conflict-keep-old') body.resolution = 'keep_old';
       if (act === 'conflict-keep-new') body.resolution = 'keep_new';
     }
-    send(url, body, null);
+    send(url, body, null, btn);
   });
 })();
 </script>
