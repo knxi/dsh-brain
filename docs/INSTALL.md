@@ -78,6 +78,44 @@ dsh --profile web --port 3080
 
 ---
 
+## 让它出现在「设置 → 插件 → 已安装插件」里（可选）
+
+`install.mjs` 装出来的形态是**patch 手插的裸插件**：能跑、页面也在，但它不在
+「已安装插件」清单里 —— 因为那一栏列的是 profile `package.json` → `dependencies`
+里的正经依赖。所以看不到它，也没有开关和卸载按钮。
+
+要变成「看得见、能开关、能卸载」的正规插件（跟 `dsh-fox-mood` 一样）：
+
+```powershell
+node tools/promote-to-plugin.mjs            # dry-run，先看会改什么
+node tools/promote-to-plugin.mjs --apply    # 真写（自动备份）
+# 然后重启 DSH
+```
+
+它做的事：
+
+| 改哪 | 改成什么 |
+|---|---|
+| profile `package.json` → `dependencies` | `"@dsh-brain/brain-tools": "link:<仓库>/apps/brain-tools"` |
+| profile `package.json` → `dsh.profile.bundles` | 追加上 `"@dsh-brain/brain-tools"` |
+| profile `cordis.patch.yml` | 把原来手写的 `- insert:` 整块注释掉（**不删**，好回滚） |
+| `node_modules` | 不动（`install.mjs` 已经建好链接） |
+
+**为什么不跑 `pnpm install`**：`dsh plugin install` 会按 lockfile 重建**整个** profile 的
+node_modules，那台机器上十几个插件全在里面，版本漂移和拆目录的代价远大于收益
+（2026-10-20 真踩过）。pnpm 只是「按声明重建链接」的工具，链接已经在位就不需要它。
+
+回滚：
+
+```powershell
+node tools/promote-to-plugin.mjs --revert --apply
+```
+
+注意：这是**两个独立的层**。`install.mjs` 负责「能加载」，`promote-to-plugin.mjs`
+负责「能管理」。前者是必需的（否则 404），后者是可选的（只是让它在插件页里出现）。
+
+---
+
 ## 把老数据搬过去（可选）
 
 新机器会建一个**空库**。要带走原来的记忆：
