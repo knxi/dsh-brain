@@ -1,0 +1,6 @@
+{
+  "name": "@dsh-brain/eval",
+  "private": true,
+  "type": "module",
+  "description": "§22.3 可回归测试集：120 个固定用例 + 五项门槛"
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@dsh-brain/workspace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "全局工作空间（M8）：事件总线 / 候选仲裁 / 注意力焦点 / 全局开关。系统 3 类脑协同的通信面",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./events": "./src/events.js",
+    "./candidates": "./src/candidates.js",
+    "./focus": "./src/focus.js",
+    "./switches": "./src/switches.js"
+  },
+  "dependencies": {
+    "@dsh-brain/core": "workspace:*"
+  },
+  "files": [
+    "src"
+  ],
+  "license": "MIT"
+}

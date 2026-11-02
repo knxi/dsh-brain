@@ -1,0 +1,7 @@
+{
+  "name": "@dsh-brain/persona-tests",
+  "private": true,
+  "type": "module",
+  "description": "系统 4（人格与主动社交）的测试入口：让 `node --test tests/persona` 可运行",
+  "main": "./run-all.mjs"
+}

@@ -1,0 +1,6 @@
+# @dsh-brain/probe 自带的 bundle patch。
+# 注意：探针不加入 brainlab 的 dsh.profile.bundles，而是由 profile 的
+# cordis.patch.yml 显式 insert，避免同一行被两层同时插入。
+- insert:
+    - id: brain-probe
+      name: '@dsh-brain/probe'

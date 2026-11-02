@@ -1,0 +1,8 @@
+# @dsh-brain/brain-tools 的 bundle 补丁层。
+# 默认不启用任何能力——工具挂上去就是挂上去了，但库路径走插件里的默认值。
+# 要改路径就在 profile 的 cordis.patch.yml 里覆盖 config。
+- id: brain-tools
+  name: "@dsh-brain/brain-tools"
+  config:
+    storePath: 'E:/ds-h/dsh-brain/data/brain.db'
+    migrationsDir: 'E:/ds-h/dsh-brain/migrations'

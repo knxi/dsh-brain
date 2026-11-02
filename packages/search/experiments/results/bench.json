@@ -1,0 +1,53 @@
+{
+  "generated_at": "2026-10-28T11:12:37.749Z",
+  "iters": 3,
+  "sizes": [
+    1000,
+    5000,
+    10000
+  ],
+  "rows": [
+    {
+      "n": 1000,
+      "index_ms": 478,
+      "ms_per_doc": 0.478,
+      "db_bytes": 2088960,
+      "file_bytes": 4096,
+      "ngram_rows": 33184,
+      "latency_ms": {
+        "fts_char": 0.366,
+        "fts_trigram": 0.129,
+        "ngram": 0.784,
+        "like": 0.463
+      }
+    },
+    {
+      "n": 5000,
+      "index_ms": 3889,
+      "ms_per_doc": 0.778,
+      "db_bytes": 10641408,
+      "file_bytes": 10641408,
+      "ngram_rows": 173726,
+      "latency_ms": {
+        "fts_char": 0.792,
+        "fts_trigram": 0.234,
+        "ngram": 2.946,
+        "like": 0.63
+      }
+    },
+    {
+      "n": 10000,
+      "index_ms": 9167,
+      "ms_per_doc": 0.917,
+      "db_bytes": 21286912,
+      "file_bytes": 21286912,
+      "ngram_rows": 349444,
+      "latency_ms": {
+        "fts_char": 1.348,
+        "fts_trigram": 0.39,
+        "ngram": 6.213,
+        "like": 1.039
+      }
+    }
+  ]
+}

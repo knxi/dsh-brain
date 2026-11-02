@@ -1,0 +1,36 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  apps/connector: {}
+
+  apps/console: {}
+
+  apps/probe: {}
+
+  apps/server: {}
+
+  packages/context:
+    dependencies:
+      '@dsh-brain/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/core: {}
+
+  packages/memory:
+    dependencies:
+      '@dsh-brain/core':
+        specifier: workspace:*
+        version: link:../core
+      '@dsh-brain/search':
+        specifier: workspace:*
+        version: link:../search
+
+  packages/search: {}

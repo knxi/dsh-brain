@@ -1,0 +1,13 @@
+{
+  "name": "@dsh-brain/console",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "只读控制台：原生 HTML + fetch，无框架、无构建。由 apps/server 以白名单方式托管",
+  "files": [
+    "index.html",
+    "app.js",
+    "styles.css"
+  ],
+  "license": "MIT"
+}

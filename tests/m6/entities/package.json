@@ -1,0 +1,7 @@
+{
+  "name": "@dsh-brain/m6-entities-tests",
+  "private": true,
+  "type": "module",
+  "description": "M6 实体与记忆关系测试入口：让 `node --test tests/m6/entities` 可运行（Node 24 不再递归目录参数）",
+  "main": "./run-all.mjs"
+}

@@ -1,0 +1,6 @@
+{
+  "name": "tests-search",
+  "private": true,
+  "type": "module",
+  "main": "run-all.mjs"
+}

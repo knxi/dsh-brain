@@ -1,0 +1,34 @@
+{
+  "name": "@dsh-brain/directives",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "系统 5：自主指令与运行控制（权限矩阵 / 状态机 / 指令对象 / 租约调度 / 内置动作 / 内部候选转指令）。零运行时依赖：所有依赖（db/queue/clock/workspace/hooks）靠注入。",
+  "main": "./src/index.js",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./permissions": "./src/permissions.js",
+    "./state-machine": "./src/state-machine.js",
+    "./directives": "./src/directives.js",
+    "./scheduler": "./src/scheduler.js",
+    "./scheduler-constants": "./src/scheduler-constants.js",
+    "./actions": "./src/actions.js",
+    "./autonomy": "./src/autonomy.js",
+    "./errors": "./src/errors.js",
+    "./util": "./src/util.js",
+    "./dry-run": "./src/dry-run.js"
+  },
+  "files": [
+    "src"
+  ],
+  "keywords": [
+    "dsh-brain",
+    "directives",
+    "autonomy",
+    "permission-matrix"
+  ],
+  "license": "MIT"
+}

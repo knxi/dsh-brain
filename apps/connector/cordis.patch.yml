@@ -1,0 +1,15 @@
+# dsh-brain connector bundle patch。
+#
+# 默认 mode=shadow：只计算候选与指标，不向宿主注入任何片段。
+# 想真正注入时，把 mode 改成 explicit 或 automatic，并单独跑一遍「无重复注入」验收
+# （docs/M2-INTERFACES.md §3.3）。
+#
+# 注意：本插件**不注册** complete:true 的 system prompt 节，也不改宿主数组；
+# 全部注入都走 waterfall 复制后返回。运行期零抛出（每个 hook 顶层 try/catch）。
+- insert:
+    - id: brain-connector
+      name: '@dsh-brain/connector'
+      config:
+        mode: shadow
+        # 有界持久队列落点（契约 §1：connector 只写 data/events/）
+        dir: 'E:/ds-h/dsh-brain/data/events'

@@ -1,0 +1,341 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1720" height="1420" viewBox="0 0 1720 1420" font-family="'Microsoft YaHei','PingFang SC','Segoe UI',sans-serif">
+  <defs>
+    <style>
+      .bg{fill:#0b0e14}
+      .h1{fill:#e6edf3;font-size:30px;font-weight:700;letter-spacing:.5px}
+      .h2{fill:#7d8590;font-size:14px;letter-spacing:.3px}
+      .sec{fill:#8b949e;font-size:12px;font-weight:600;letter-spacing:2px}
+      .t{fill:#e6edf3;font-size:15px;font-weight:600}
+      .ts{fill:#8b949e;font-size:12px}
+      .td{fill:#6e7681;font-size:11.5px}
+      .mono{font-family:'Cascadia Code','SF Mono',Consolas,monospace;font-size:11.5px;fill:#8b949e}
+      .num{font-family:'Cascadia Code',Consolas,monospace;font-size:13px;fill:#e6edf3;font-weight:600}
+      .box{fill:#12161f;stroke:#252b36;stroke-width:1.4;rx:12}
+      .box2{fill:#161b24;stroke:#30363d;stroke-width:1.4;rx:12}
+      .lbl{fill:#4a5260;font-size:11px;font-weight:700;letter-spacing:1px}
+      .flow{stroke:#3d4657;stroke-width:2;fill:none}
+      .dot{fill:#58a6ff}
+    </style>
+    <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4a5568"/>
+    </marker>
+    <marker id="arB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#58a6ff"/>
+    </marker>
+    <marker id="arG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3fb950"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1720" height="1420"/>
+
+  <!-- ═══ 标题 ═══ -->
+  <text class="h1" x="100" y="56">dsh-brain · 外置大脑架构</text>
+  <text class="h2" x="100" y="86">本地 SQLite 记忆库 · 中文三路检索 · built/attached/sent 三级上下文证据</text>
+  <text class="h2" x="1620" y="56" text-anchor="end">架构快照</text>
+  <text class="mono" x="1620" y="80" text-anchor="end">2026-10-31 · M0–M8</text>
+  <line x1="100" y1="102" x2="1620" y2="102" stroke="#252b36" stroke-width="1"/>
+
+  <!-- ═══════════ A 区：数据流主轴 ═══════════ -->
+  <text class="sec" x="100" y="134">① 数据流主轴</text>
+
+  <!-- L1 会话层 -->
+  <rect class="box2" x="180" y="148" width="460" height="62" rx="12"/>
+  <text class="t" x="410" y="174" text-anchor="middle">DSH 会话 / 模型</text>
+  <text class="ts" x="410" y="194" text-anchor="middle">用户消息 · system prompt · 工具调用</text>
+
+  <!-- 分叉箭头 -->
+  <path class="flow" d="M410,210 L410,226" marker-end="url(#ar)"/>
+  <path class="flow" d="M270,226 L550,226" />
+  <path class="flow" d="M270,226 L270,248" marker-end="url(#arB)"/>
+  <path class="flow" d="M550,226 L550,248" marker-end="url(#arB)"/>
+  <text class="ts" x="300" y="243">① 显式检索</text>
+  <text class="ts" x="520" y="243" text-anchor="end">② 自动注入</text>
+
+  <!-- L2 两个入口 -->
+  <rect class="box" x="110" y="252" width="320" height="168" rx="12"/>
+  <rect x="110" y="252" width="320" height="4" rx="2" fill="#58a6ff"/>
+  <text class="lbl" x="128" y="278">APPS · 显式入口</text>
+  <text class="t" x="128" y="302">brain-tools</text>
+  <text class="mono" x="128" y="326">brain_search</text>
+  <text class="td" x="250" y="326">查记忆</text>
+  <text class="mono" x="128" y="346">brain_remember</text>
+  <text class="td" x="250" y="346">写记忆</text>
+  <text class="mono" x="128" y="366">brain_forget</text>
+  <text class="td" x="250" y="366">删记忆</text>
+  <line x1="128" y1="382" x2="412" y2="382" stroke="#252b36"/>
+  <text class="td" x="128" y="402">模型主动调，走工具协议</text>
+
+  <rect class="box" x="460" y="252" width="320" height="168" rx="12"/>
+  <rect x="460" y="252" width="320" height="4" rx="2" fill="#58a6ff"/>
+  <text class="lbl" x="478" y="278">APPS · 自动入口</text>
+  <text class="t" x="478" y="302">connector（cordis 插件）</text>
+  <text class="mono" x="478" y="326">system-prompt/assemble</text>
+  <text class="mono" x="478" y="345">agent/pre-step</text>
+  <text class="mono" x="478" y="364">llm/stream · session/event</text>
+  <text class="mono" x="478" y="383">agent/turn-stopping</text>
+  <line x1="478" y1="392" x2="762" y2="392" stroke="#252b36"/>
+  <text class="td" x="478" y="410">只注入带来源标记的上下文，并证明 sent</text>
+
+  <!-- 汇合 -->
+  <path class="flow" d="M270,420 L270,442 L400,442" />
+  <path class="flow" d="M610,420 L610,442 L400,442" />
+  <path class="flow" d="M400,442 L400,470" marker-end="url(#ar)"/>
+
+  <!-- L3 context -->
+  <rect class="box" x="130" y="474" width="540" height="118" rx="12"/>
+  <rect x="130" y="474" width="4" height="118" rx="2" fill="#bc8cff"/>
+  <text class="lbl" x="150" y="498">PACKAGES · 装配层</text>
+  <text class="t" x="150" y="522">context  动态上下文装配</text>
+  <text class="ts" x="150" y="544">检索 → 构包 → Token 预算 → 截断策略</text>
+  <text class="td" x="150" y="566">只组装，不写记忆库 · 产出 built / attached / sent 三级证据</text>
+  <rect x="150" y="574" width="112" height="16" rx="8" fill="#1c2533" stroke="#2d3a52"/>
+  <text x="206" y="586" text-anchor="middle" fill="#9ecbff" font-size="10.5">built</text>
+  <rect x="268" y="574" width="112" height="16" rx="8" fill="#1c2533" stroke="#2d3a52"/>
+  <text x="324" y="586" text-anchor="middle" fill="#9ecbff" font-size="10.5">attached</text>
+  <rect x="386" y="574" width="112" height="16" rx="8" fill="#1c2533" stroke="#2d3a52"/>
+  <text x="442" y="586" text-anchor="middle" fill="#9ecbff" font-size="10.5">sent</text>
+
+  <path class="flow" d="M400,592 L400,614" marker-end="url(#arG)"/>
+
+  <!-- L4 search -->
+  <rect class="box" x="130" y="618" width="540" height="196" rx="12"/>
+  <rect x="130" y="618" width="4" height="196" rx="2" fill="#3fb950"/>
+  <text class="lbl" x="150" y="642">PACKAGES · 检索层</text>
+  <text class="t" x="150" y="666">search  中文三路召回</text>
+
+  <rect x="150" y="678" width="500" height="34" rx="7" fill="#0f1a14" stroke="#1f3b28"/>
+  <text class="mono" x="164" y="700" fill="#7ee787">①</text>
+  <text class="ts" x="182" y="700">FTS5 char-space</text>
+  <text class="td" x="640" y="700" text-anchor="end">中文主力路径</text>
+
+  <rect x="150" y="718" width="500" height="34" rx="7" fill="#0f1a14" stroke="#1f3b28"/>
+  <text class="mono" x="164" y="740" fill="#7ee787">②</text>
+  <text class="ts" x="182" y="740">FTS5 trigram</text>
+  <text class="td" x="640" y="740" text-anchor="end">补充召回</text>
+
+  <rect x="150" y="758" width="500" height="34" rx="7" fill="#0f1a14" stroke="#1f3b28"/>
+  <text class="mono" x="164" y="780" fill="#7ee787">③</text>
+  <text class="ts" x="182" y="780">n-gram 自维护</text>
+  <text class="td" x="640" y="780" text-anchor="end">兜底</text>
+
+  <text class="td" x="150" y="806">RRF 融合 → 来源回查 → 区分四种「检索不足」·  实测 hit@10 = 100%（默认分词仅 50%）</text>
+
+  <path class="flow" d="M400,814 L400,836" marker-end="url(#ar)"/>
+
+  <!-- L5 memory -->
+  <rect class="box" x="130" y="840" width="540" height="126" rx="12"/>
+  <rect x="130" y="840" width="4" height="126" rx="2" fill="#d29922"/>
+  <text class="lbl" x="150" y="864">PACKAGES · 主账</text>
+  <text class="t" x="150" y="888">memory  唯一写入通道</text>
+  <rect x="150" y="900" width="150" height="20" rx="5" fill="#241d0f" stroke="#3d3218"/>
+  <text x="225" y="914" text-anchor="middle" fill="#e3b341" font-size="10.5">单写入队列 + 事务</text>
+  <rect x="310" y="900" width="120" height="20" rx="5" fill="#241d0f" stroke="#3d3218"/>
+  <text x="370" y="914" text-anchor="middle" fill="#e3b341" font-size="10.5">outbox</text>
+  <rect x="440" y="900" width="120" height="20" rx="5" fill="#241d0f" stroke="#3d3218"/>
+  <text x="500" y="914" text-anchor="middle" fill="#e3b341" font-size="10.5">幂等摄取</text>
+  <rect x="570" y="900" width="80" height="20" rx="5" fill="#241d0f" stroke="#3d3218"/>
+  <text x="610" y="914" text-anchor="middle" fill="#e3b341" font-size="10.5">迁移</text>
+  <text class="td" x="150" y="940">删除屏障 · 墓碑 · 备份骨架 · 恢复演练 24/24</text>
+  <text class="td" x="150" y="958">红线：不引原生编译依赖（sqlite3 / better-sqlite3 一律不用）</text>
+
+  <path class="flow" d="M400,966 L400,988" marker-end="url(#ar)"/>
+
+  <!-- L6 store -->
+  <rect class="box2" x="130" y="992" width="540" height="96" rx="12" stroke="#3d3218"/>
+  <text class="lbl" x="150" y="1016">DATA</text>
+  <text class="t" x="150" y="1040">brain.db</text>
+  <text class="mono" x="240" y="1040">E:\ds-h\dsh-brain\data\brain.db</text>
+  <text class="td" x="150" y="1064">SQLite WAL · 60+ 表 · 153 索引 · 226 条记忆 · 225 条来源引用</text>
+  <text class="td" x="150" y="1080">117 实体 / 197 关联 · 261 事件 · 76 条狐狸情绪事件</text>
+
+  <!-- 观测区 -->
+  <text class="sec" x="130" y="1140">③ 观测与治理</text>
+  <rect class="box" x="130" y="1156" width="540" height="92" rx="12"/>
+  <rect x="130" y="1156" width="4" height="92" rx="2" fill="#7ee787"/>
+  <text class="t" x="150" y="1182">core</text>
+  <text class="td" x="198" y="1182">事件信封 · 稳定 ID · 时钟 · 错误类型（纯函数，不碰 IO）</text>
+  <text class="t" x="150" y="1208">server</text>
+  <text class="td" x="198" y="1208">本地 HTTP API，仅 127.0.0.1 · node:http 原生，无框架</text>
+  <text class="t" x="430" y="1234">probe</text>
+  <text class="td" x="478" y="1234">M0 探针，只观测不干预</text>
+  <text class="t" x="150" y="1234">console</text>
+  <text class="td" x="215" y="1234">11 页只读控制台，同源 /dsh-brain</text>
+
+  <!-- ═══════════ B 区：三大系统 ═══════════ -->
+  <text class="sec" x="800" y="134">② 全局工作空间与认知系统</text>
+
+  <rect class="box2" x="800" y="148" width="820" height="96" rx="12"/>
+  <rect x="800" y="148" width="4" height="96" rx="2" fill="#58a6ff"/>
+  <text class="lbl" x="820" y="172">PACKAGES · M8</text>
+  <text class="t" x="820" y="196">workspace  全局工作空间</text>
+  <text class="td" x="820" y="218">事件总线 · 候选仲裁 · 注意力焦点 · 全局开关</text>
+  <text class="td" x="820" y="234">系统 3 类脑协同的通信面</text>
+
+  <!-- 从 workspace 向三个系统发箭头 -->
+  <path class="flow" d="M935,244 L935,268" marker-end="url(#ar)"/>
+  <path class="flow" d="M1220,244 L1220,268" marker-end="url(#ar)"/>
+  <path class="flow" d="M1505,244 L1505,268" marker-end="url(#ar)"/>
+
+  <!-- 系统 3 -->
+  <rect class="box" x="800" y="272" width="270" height="452" rx="12"/>
+  <rect x="800" y="272" width="270" height="4" rx="2" fill="#ff7b72"/>
+  <text class="lbl" x="818" y="298">系统 3</text>
+  <text class="t" x="818" y="322">cognition</text>
+  <text class="ts" x="818" y="342">类脑协同</text>
+  <line x1="818" y1="354" x2="1052" y2="354" stroke="#252b36"/>
+
+  <circle cx="824" cy="378" r="3" fill="#ff7b72"/>
+  <text class="ts" x="838" y="382">显著性标记</text>
+  <text class="td" x="838" y="398">杏仁核 · 什么值得记</text>
+
+  <circle cx="824" cy="424" r="3" fill="#ff7b72"/>
+  <text class="ts" x="838" y="428">空闲反思</text>
+  <text class="td" x="838" y="444">默认模式网络 DMN</text>
+
+  <circle cx="824" cy="470" r="3" fill="#ff7b72"/>
+  <text class="ts" x="838" y="474">技能校准</text>
+  <text class="td" x="838" y="490">小脑 · skill_stats / lessons</text>
+
+  <circle cx="824" cy="516" r="3" fill="#ff7b72"/>
+  <text class="ts" x="838" y="520">免疫隔离</text>
+  <text class="td" x="838" y="536">immune_quarantine</text>
+
+  <circle cx="824" cy="562" r="3" fill="#ff7b72"/>
+  <text class="ts" x="838" y="566">健康监控</text>
+  <text class="td" x="838" y="582">脑干 · health_alerts</text>
+
+  <line x1="818" y1="604" x2="1052" y2="604" stroke="#252b36"/>
+  <text class="td" x="818" y="624">产出表</text>
+  <text class="mono" x="818" y="644">memory_salience</text>
+  <text class="mono" x="818" y="662">reflection_runs / reflections</text>
+  <text class="mono" x="818" y="680">skill_stats / skill_lessons</text>
+  <text class="td" x="818" y="706">本次实例：反思 6 次 / 16 条 / 技能 20 项</text>
+
+  <!-- 系统 4 -->
+  <rect class="box" x="1095" y="272" width="270" height="452" rx="12"/>
+  <rect x="1095" y="272" width="270" height="4" rx="2" fill="#f778ba"/>
+  <text class="lbl" x="1113" y="298">系统 4</text>
+  <text class="t" x="1113" y="322">persona</text>
+  <text class="ts" x="1113" y="342">人格与社交</text>
+  <line x1="1113" y1="354" x2="1347" y2="354" stroke="#252b36"/>
+
+  <circle cx="1119" cy="378" r="3" fill="#f778ba"/>
+  <text class="ts" x="1133" y="382">人格导入</text>
+  <text class="td" x="1133" y="398">版本冲突并列保留</text>
+
+  <circle cx="1119" cy="424" r="3" fill="#f778ba"/>
+  <text class="ts" x="1133" y="428">人物模型</text>
+  <text class="td" x="1133" y="444">person_models</text>
+
+  <circle cx="1119" cy="470" r="3" fill="#f778ba"/>
+  <text class="ts" x="1133" y="474">关系四维</text>
+  <text class="td" x="1133" y="490">relationship_states</text>
+
+  <circle cx="1119" cy="516" r="3" fill="#f778ba"/>
+  <text class="ts" x="1133" y="520">主动社交</text>
+  <text class="td" x="1133" y="536">候选 / 评分 / 仲裁</text>
+
+  <circle cx="1119" cy="562" r="3" fill="#f778ba"/>
+  <text class="ts" x="1133" y="566">回复与沉默仲裁</text>
+  <text class="td" x="1133" y="582">response_decisions</text>
+
+  <line x1="1113" y1="604" x2="1347" y2="604" stroke="#252b36"/>
+  <text class="td" x="1113" y="624">产出表</text>
+  <text class="mono" x="1113" y="644">persona_profiles / versions</text>
+  <text class="mono" x="1113" y="662">relationship_events</text>
+  <text class="mono" x="1113" y="680">social_candidates / sends</text>
+  <text class="td" x="1113" y="706">本次实例：关系事件 141 条</text>
+
+  <!-- 系统 5 -->
+  <rect class="box" x="1390" y="272" width="230" height="452" rx="12"/>
+  <rect x="1390" y="272" width="230" height="4" rx="2" fill="#a5d6ff"/>
+  <text class="lbl" x="1408" y="298">系统 5</text>
+  <text class="t" x="1408" y="322">directives</text>
+  <text class="ts" x="1408" y="342">自主指令</text>
+  <line x1="1408" y1="354" x2="1602" y2="354" stroke="#252b36"/>
+
+  <circle cx="1414" cy="378" r="3" fill="#a5d6ff"/>
+  <text class="ts" x="1428" y="382">权限矩阵</text>
+  <text class="td" x="1428" y="398">谁能做什么</text>
+
+  <circle cx="1414" cy="424" r="3" fill="#a5d6ff"/>
+  <text class="ts" x="1428" y="428">状态机</text>
+  <text class="td" x="1428" y="444">指令生命周期</text>
+
+  <circle cx="1414" cy="470" r="3" fill="#a5d6ff"/>
+  <text class="ts" x="1428" y="474">指令对象</text>
+  <text class="td" x="1428" y="490">结构化意图</text>
+
+  <circle cx="1414" cy="516" r="3" fill="#a5d6ff"/>
+  <text class="ts" x="1428" y="520">租约调度</text>
+  <text class="td" x="1428" y="536">不抢跑不霸占</text>
+
+  <circle cx="1414" cy="562" r="3" fill="#a5d6ff"/>
+  <text class="ts" x="1428" y="566">内置动作</text>
+  <text class="td" x="1428" y="582">候选转指令</text>
+
+  <line x1="1408" y1="604" x2="1602" y2="604" stroke="#252b36"/>
+  <text class="td" x="1408" y="624">零运行时依赖</text>
+  <text class="td" x="1408" y="642">db / queue / clock /</text>
+  <text class="td" x="1408" y="658">workspace / hooks 全注入</text>
+  <text class="mono" x="1408" y="680">directives</text>
+  <text class="mono" x="1408" y="698">directive_runs / steps</text>
+
+  <!-- 数据源说明 -->
+  <rect class="box" x="800" y="752" width="820" height="96" rx="12" stroke="#3a2a4a"/>
+  <text class="lbl" x="820" y="776">共同数据落点</text>
+  <text class="ts" x="820" y="800">三大系统全部读写同一个 brain.db，不另开了库</text>
+  <text class="td" x="820" y="822">fox_state / fox_events  ← 小狐狸情感插件的真账也在这里，state.json 只是缓存</text>
+  <text class="td" x="820" y="840">attention_focus · ws_events · ws_candidates  ← 工作空间的注意力与事件</text>
+
+  <!-- 治理 -->
+  <text class="sec" x="800" y="900">④ governance · 可治理性</text>
+  <rect class="box" x="800" y="916" width="820" height="132" rx="12"/>
+  <rect x="800" y="916" width="4" height="132" rx="2" fill="#e3b341"/>
+
+  <text class="ts" x="820" y="942">独立删除账本</text>
+  <text class="td" x="820" y="962">deletion_jobs / deletion_tombstones —— 删除留痕，可审计</text>
+
+  <text class="ts" x="820" y="988">全量备份</text>
+  <text class="td" x="820" y="1008">backups / blob_refs —— 恢复演练 24/24 通过</text>
+
+  <text class="ts" x="820" y="1034">审计日志</text>
+  <text class="mono" x="820" y="1054">audit_logs</text>
+  <text class="td" x="900" y="1054">本次实例 40 条</text>
+
+  <!-- 图例 -->
+  <text class="sec" x="800" y="1100">⑤ 图例</text>
+  <rect class="box" x="800" y="1116" width="820" height="132" rx="12"/>
+  <rect x="820" y="1136" width="14" height="14" rx="3" fill="#58a6ff"/>
+  <text class="ts" x="844" y="1148">入口层</text>
+  <text class="td" x="844" y="1166">模型与记忆之间的两道门</text>
+
+  <rect x="1020" y="1136" width="14" height="14" rx="3" fill="#bc8cff"/>
+  <text class="ts" x="1044" y="1148">装配层</text>
+  <text class="td" x="1044" y="1166">检索结果 → 上下文包</text>
+
+  <rect x="1220" y="1136" width="14" height="14" rx="3" fill="#3fb950"/>
+  <text class="ts" x="1244" y="1148">检索层</text>
+  <text class="td" x="1244" y="1166">三路召回 + 融合</text>
+
+  <rect x="1420" y="1136" width="14" height="14" rx="3" fill="#d29922"/>
+  <text class="ts" x="1444" y="1148">存储层</text>
+  <text class="td" x="1444" y="1166">唯一写入通道</text>
+
+  <rect x="820" y="1200" width="14" height="14" rx="3" fill="#ff7b72"/>
+  <text class="ts" x="844" y="1212">系统 3 cognition</text>
+  <rect x="1020" y="1200" width="14" height="14" rx="3" fill="#f778ba"/>
+  <text class="ts" x="1044" y="1212">系统 4 persona</text>
+  <rect x="1220" y="1200" width="14" height="14" rx="3" fill="#a5d6ff"/>
+  <text class="ts" x="1244" y="1212">系统 5 directives</text>
+  <rect x="1420" y="1200" width="14" height="14" rx="3" fill="#7ee787"/>
+  <text class="ts" x="1444" y="1212">观测层</text>
+
+  <!-- 底部 -->
+  <line x1="100" y1="1310" x2="1620" y2="1310" stroke="#252b36" stroke-width="1"/>
+  <text class="td" x="100" y="1338">设计原则：有效上下文扩展 ≠ 上下文窗口扩展 —— 不靠塞长历史，靠检索；说得清「这次用了哪些记忆」。</text>
+  <text class="td" x="100" y="1360">硬约束：不改已装 dsh 包 · 不动生产 profile · 不迁 Engram 现有库 · 不写凭据进日志 · 不引原生编译依赖。</text>
+  <text class="td" x="100" y="1382">当前状态：Beta，接口会变。仅 Windows + Node 22/24 + SQLite(WAL) 实测。</text>
+  <text class="mono" x="1620" y="1382" text-anchor="end">png 989 tests pass / 0 fail · 2026-10-30</text>
+</svg>

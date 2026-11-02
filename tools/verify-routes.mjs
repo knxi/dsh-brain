@@ -1,0 +1,422 @@
+// @ts-check
+/**
+ * brain-tools 路由验收：真的起一个 HTTP 服务，把控制台路由挂上去打一遍。
+ *
+ * 为什么需要这个（smoke.mjs 不够）：
+ *   smoke 只在假 ctx 上验工具层，没 webServer 就跳过路由。可路由层最容易出的事
+ *   恰恰是「页面能渲但接口字段名对不上」「usage 埋点写了但 API 没读回来」这类
+ *   静默错位——工具全绿、页面空白。所以这里真起 server、真发请求、真断言响应。
+ *
+ * 全程用临时库 + 临时使用日志，绝不碰生产 data/brain.db 与 data/logs/usage.jsonl。
+ *
+ *   node tools/verify-routes.mjs
+ */
+import { mkdtempSync, rmSync } from 'node:fs'
+import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+const MIGRATIONS = 'E:/ds-h/dsh-brain/migrations'
+const dir = mkdtempSync(join(tmpdir(), 'brain-routes-'))
+const storePath = join(dir, 'brain.db')
+const usageLogPath = join(dir, 'usage.jsonl')
+// M4.6：sidecar 也必须显式指到临时目录。不传的话插件走生产默认值
+// （data/logs/used-later.jsonl）——本脚本只读不会写，但验收报告会读到生产观察期数据，
+// 而且离「合成数据落进观察期」只差一次 turn/end 模拟（CONTRACTS 12.39 同一条纪律）。
+const usedLaterLogPath = join(dir, 'used-later.jsonl')
+// M7 同理：矛盾核验动作的审计流水也必须落在临时目录，否则「测试点过的核验」
+// 会混进生产流水，让人以为真有人处理过那些矛盾。
+const conflictLogPath = join(dir, 'conflict-actions.jsonl')
+
+/** @type {any[]} */
+const checks = []
+const check = (/** @type {string} */ name, ok, /** @type {string} */ detail = '') => {
+  checks.push({ name, ok: !!ok, detail })
+  console.log(`[${ok ? 'OK  ' : 'FAIL'}] ${name}${detail ? ' — ' + detail : ''}`)
+}
+
+/** @type {any[]} */
+const registered = []
+/** @type {((req: any, res: any) => any) | null} */
+let routeHandler = null
+
+const fakeCtx = {
+  tools: { register: (/** @type {any} */ tool) => registered.push(tool) },
+  webServer: {
+    register: (/** @type {any} */ route) => {
+      routeHandler = route.handler
+      return () => {}
+    },
+  },
+  effect: (/** @type {() => any} */ fn) => fn(),
+}
+
+/** @type {import('node:http').Server | null} */
+let server = null
+
+try {
+  const { apply } = await import('../apps/brain-tools/index.js')
+  apply(fakeCtx, {
+    storePath,
+    migrationsDir: MIGRATIONS,
+    scopeId: 'route-scope',
+    personId: 'route-owner',
+    usageLogPath,
+    usedLaterLogPath,
+    conflictLogPath,
+    // 治理服务默认由插件进程内拉起（2026-10-30）。验收必须关掉：
+    // 否则它会拿临时库去 listen 7420，和真机上跑着的服务抢端口；
+    // 而且这次要测的是「治理服务不可用时的降级页」，不是代理。
+    governance: false,
+  })
+
+  check('工具挂载', registered.length === 3, `n=${registered.length}`)
+  check('控制台路由挂载', typeof routeHandler === 'function')
+  if (typeof routeHandler !== 'function') throw new Error('路由没挂上，后面没法验')
+
+  const handler = routeHandler
+  server = createServer((req, res) => { handler(req, res) })
+  await new Promise((/** @type {(v?: unknown) => void} */ resolve) =>
+    server.listen(0, '127.0.0.1', () => resolve()),
+  )
+  const address = /** @type {import('node:net').AddressInfo} */ (server.address())
+  const base = `http://127.0.0.1:${address.port}`
+  console.log(`\n临时服务：${base}（库 ${storePath}）\n`)
+
+  /** @param {string} path */
+  const get = async (path) => {
+    // 控制台整体挂在 /dsh-brain 前缀下（ROUTE），请求必须带上，
+    // 否则 handler 的 pathname.slice(ROUTE.length) 会切出错位路径。
+    const res = await fetch(base + '/dsh-brain' + path)
+    const text = await res.text()
+    let json = null
+    try { json = JSON.parse(text) } catch { /* 页面返回 HTML */ }
+    return { status: res.status, text, json, headers: res.headers }
+  }
+
+  /**
+   * POST 写接口（M7 矛盾动作）。headers 由调用方决定带不带 X-Brain-Action——
+   * 故意留成参数：缺头那条断言就是要证明「不带就被拒」。
+   * @param {string} path
+   * @param {unknown} body
+   * @param {Record<string, string>} [headers]
+   */
+  const post = async (path, body, headers = {}) => {
+    const res = await fetch(base + '/dsh-brain' + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify(body),
+    })
+    const text = await res.text()
+    let json = null
+    try { json = JSON.parse(text) } catch { /* 非 JSON 响应 */ }
+    return { status: res.status, text, json, headers: res.headers }
+  }
+
+  const byName = new Map(registered.map((t) => [t.name, t]))
+  const remember = byName.get('brain_remember')
+  const search = byName.get('brain_search')
+
+  // ── 1. 先写一条、查一次，制造真实的「模型通道」使用记录 ──
+  const created = await remember.execute({
+    content: '外墙保温用 50mm 岩棉，导热系数 0.040，图号 建施-11。',
+    summary: '外墙保温：50mm 岩棉，导热 0.040，建施-11',
+    kind: 'fact',
+    importance: 0.7,
+  })
+  check('写入一条记忆', created && created.ok === true, created && created.memoryId)
+
+  const found = await search.execute({ query: '外墙保温 岩棉 建施-11', limit: 5 }, {})
+  check('检索命中', found && found.ok === true && found.hits.length > 0, `hits=${found && found.hits && found.hits.length}`)
+
+  await search.execute({ query: '完全没有这条东西xyzzy', limit: 5 }, {})
+  const failSearch = await search.execute({ query: '   ' }, {})
+  check('空 query 仍回结构化错误', failSearch && failSearch.ok === false, failSearch && failSearch.code)
+
+  // ── 2. /api/stats：首页数字要带 usage ──
+  const stats = await get('/api/stats')
+  check('/api/stats 200', stats.status === 200, String(stats.status))
+  check('/api/stats 记忆数正确', stats.json && stats.json.memories === 1, `memories=${stats.json && stats.json.memories}`)
+  check('/api/stats 带 usage 摘要',
+    stats.json && stats.json.usage && stats.json.usage.total >= 3,
+    JSON.stringify(stats.json && stats.json.usage))
+
+  // ── 3. /api/usage：聚合 + 覆盖率 + 最近流水 ──
+  const usage = await get('/api/usage')
+  check('/api/usage 200', usage.status === 200, String(usage.status))
+  const u = usage.json || {}
+  check('/api/usage 只统计 tool 通道',
+    u.summary && u.summary.byChannel && u.summary.byChannel.tool >= 3,
+    JSON.stringify(u.summary && u.summary.byChannel))
+  check('/api/usage 命中率用跑完的检索作分母',
+    u.summary && Math.abs(u.summary.hitRate - 0.5) < 1e-9 && Math.abs(u.summary.callHitRate - 1 / 3) < 1e-3,
+    `hitRate=${u.summary && u.summary.hitRate} callHitRate=${u.summary && u.summary.callHitRate}`)
+  check('/api/usage 零命中只算跑完的检索',
+    u.summary && u.summary.zeroHitCount === 1 && u.summary.failCount === 1,
+    `zero=${u.summary && u.summary.zeroHitCount} fail=${u.summary && u.summary.failCount}`)
+  check('/api/usage 零命中榜不含空 query 的故障记录',
+    Array.isArray(u.summary && u.summary.zeroHitQueries) &&
+    u.summary.zeroHitQueries.every((q) => typeof q.query === 'string' && q.query.length > 0),
+    JSON.stringify(u.summary && u.summary.zeroHitQueries))
+  check('/api/usage 覆盖率读到了全库',
+    u.coverage && u.coverage.totalMemories === 1,
+    JSON.stringify(u.coverage && { total: u.coverage.totalMemories, touched: u.coverage.touched }))
+  check('/api/usage 最近流水带 query',
+    Array.isArray(u.recent) && u.recent.length >= 3 && u.recent.some((e) => e.query === '外墙保温 岩棉 建施-11'),
+    `recent=${u.recent && u.recent.length}`)
+  check('/api/usage 流水不含 usedLater 占位',
+    Array.isArray(u.recent) && u.recent.every((e) => !('usedLater' in e)))
+  // ── 3b. M4.6 usedLater 口径：字段必须在、口径必须写明是下界、sidecar 不许指生产 ──
+  // 只断言「形状与口径」，不断言数值：本脚本没有模拟 turn/end，
+  // 硬断言「引用数=0」会把「本就不该有数据」和「代码坏了」混在一起（CONTRACTS 12.5 同源教训）。
+  check('/api/usage 带 usedLater 口径',
+    u.usedLater && Number.isInteger(u.usedLater.hitRows) && Number.isInteger(u.usedLater.quotedCount) &&
+    Number.isInteger(u.usedLater.unjudgedCount) &&
+    (u.usedLater.quoteRate === null || typeof u.usedLater.quoteRate === 'number'),
+    JSON.stringify(u.usedLater))
+  check('/api/usage 的 usedLater 口径写明「下界」',
+    typeof u.usedLater?.note === 'string' && u.usedLater.note.includes('下界'),
+    String(u.usedLater && u.usedLater.note))
+  check('/api/usage usedLater 的 sidecar 指向临时目录（不写生产）',
+    u.usedLaterLog && typeof u.usedLaterLog.path === 'string' &&
+    u.usedLaterLog.path.includes(dir) && !u.usedLaterLog.path.includes(join('data', 'logs')),
+    String(u.usedLaterLog && u.usedLaterLog.path))
+
+  // ── 4. /api/search：控制台通道要和模型通道分开记 ──
+  const console1 = await get('/api/search?q=' + encodeURIComponent('外墙保温'))
+  check('/api/search 200', console1.status === 200, String(console1.status))
+  check('/api/search 有命中', console1.json && console1.json.hits.length > 0, `hits=${console1.json && console1.json.hits && console1.json.hits.length}`)
+  const afterConsole = await get('/api/usage')
+  check('控制台检索记成 channel=console',
+    afterConsole.json && afterConsole.json.summary.byChannel.console >= 1,
+    JSON.stringify(afterConsole.json && afterConsole.json.summary.byChannel))
+
+  // ── 5. days 参数夹取（0 / 负数 / 超大都不能炸） ──
+  for (const days of ['0', '-3', '99999', 'abc']) {
+    const r = await get('/api/usage?days=' + days)
+    check(`/api/usage?days=${days} 不炸`, r.status === 200 && r.json && r.json.ok === true,
+      `status=${r.status} windowDays=${r.json && r.json.summary && r.json.summary.windowDays}`)
+  }
+
+  // ── 6. 页面能出 ──
+  const page = await get('/usage')
+  check('/usage 200', page.status === 200, String(page.status))
+  check('/usage 是完整 HTML', page.text.startsWith('<!DOCTYPE html>') && page.text.endsWith('</html>'), `len=${page.text.length}`)
+  check('/usage 带统计骨架', page.text.includes('s-total') && page.text.includes('/dsh-brain/api/usage'))
+  check('/usage 设了防嗅探头', page.headers.get('x-content-type-options') === 'nosniff')
+
+  const listPage = await get('/')
+  check('/ 列表页 200', listPage.status === 200, String(listPage.status))
+  check('/ 列表页有使用情况入口', listPage.text.includes('/dsh-brain/usage'))
+
+  // ── 7. M6：实体与关系 ──
+  // 开第二个连接造实体数据（同一临时库，WAL 允许多连接），
+  // 再用「工具层」和「HTTP」两个入口各验一遍——两边必须看见同一份实体。
+  const { openBrain } = await import('../packages/memory/src/index.js')
+  const brain2 = openBrain({
+    dbPath: storePath,
+    migrationsDir: MIGRATIONS,
+    bindings: { scope_id: 'route-scope', person_id: 'route-owner' },
+  })
+  const entityA = await brain2.entities.upsert({ name: '外墙保温', kind: 'concept', aliases: ['岩棉'], importance: 0.8 })
+  await brain2.entities.linkMemory(created.memoryId, entityA.id)
+  check('实体建起来并挂上记忆', !!entityA.id, entityA.id)
+
+  const byEntityOnly = await search.execute({ entity: '外墙保温' }, {})
+  const entityItems = (byEntityOnly && byEntityOnly.entityItems) || []
+  check('只给 entity 能列出名下记忆', byEntityOnly && byEntityOnly.ok === true && entityItems.length === 1, `entityItems=${entityItems.length}`)
+  check('列出的就是挂上去的那条', entityItems[0] && entityItems[0].memoryId === created.memoryId)
+
+  const byAlias = await search.execute({ entity: '岩棉' }, {})
+  check('别名也能解析到实体',
+    byAlias && byAlias.entity && byAlias.entity.name === '外墙保温',
+    JSON.stringify(byAlias && byAlias.entity))
+
+  const ghost = await search.execute({ entity: '根本不存在的实体xyz' }, {})
+  check('实体对不上时如实说、不硬凑',
+    ghost && ghost.ok === true && ghost.hits.length === 0 && ghost.entityQuery && ghost.entityQuery.resolved === false,
+    ghost && ghost.message)
+
+  const entitySearch = await search.execute({ query: '外墙保温 岩棉', entity: '外墙保温' }, {})
+  check('entity + query 求交',
+    entitySearch && entitySearch.ok === true && entitySearch.hits.length === 1,
+    `hits=${entitySearch && entitySearch.hits && entitySearch.hits.length}`)
+  check('命中里带实体标注',
+    (entitySearch.hits || [])[0] &&
+      Array.isArray(entitySearch.hits[0].entities) &&
+      entitySearch.hits[0].entities.includes('外墙保温'),
+    JSON.stringify((entitySearch.hits || [])[0] && entitySearch.hits[0].entities))
+
+  const entApi = await get('/api/entities')
+  check('/api/entities 200', entApi.status === 200 && entApi.json && entApi.json.ok === true, String(entApi.status))
+  check('/api/entities 带实体与统计',
+    entApi.json && entApi.json.items.length === 1 && entApi.json.stats.total === 1,
+    JSON.stringify(entApi.json && entApi.json.stats))
+  const entMemos = await get('/api/entities/memories?id=' + encodeURIComponent(entityA.id))
+  check('/api/entities/memories 200', entMemos.status === 200 && entMemos.json.items.length === 1, String(entMemos.status))
+
+  // 再写一条相反的，造一条矛盾边，验冲突接口
+  const contradicting = await remember.execute({
+    content: '外墙保温改用 80mm 岩棉，图号 建施-12。',
+    summary: '外墙保温改 80mm 岩棉',
+    kind: 'fact',
+  })
+  const edge = await brain2.memoryEdges.link({
+    fromMemoryId: created.memoryId,
+    toMemoryId: contradicting.memoryId,
+    kind: 'contradicts',
+    reason: '厚度说法不一致',
+  })
+  check('矛盾边建起来', !!edge.id, edge.id)
+  const conflicts = await get('/api/conflicts')
+  check('/api/conflicts 200', conflicts.status === 200 && conflicts.json && conflicts.json.ok === true, String(conflicts.status))
+  check('/api/conflicts 有一条', conflicts.json && conflicts.json.items.length === 1, String(conflicts.json && conflicts.json.items.length))
+  const conflictItem = (conflicts.json && conflicts.json.items && conflicts.json.items[0]) || null
+  check('/api/conflicts 带两端全文（判断靠原文，不能只给摘要）',
+    conflictItem && conflictItem.from && conflictItem.to &&
+      typeof conflictItem.from.content === 'string' && conflictItem.from.content.includes('外墙保温') &&
+      typeof conflictItem.to.content === 'string' && conflictItem.to.content.includes('80mm'),
+    JSON.stringify({
+      a: conflictItem && conflictItem.from && String(conflictItem.from.content || '').slice(0, 16),
+      b: conflictItem && conflictItem.to && String(conflictItem.to.content || '').slice(0, 16),
+    }))
+  check('/api/conflicts 带两端实体标注',
+    conflictItem && Array.isArray(conflictItem.from.entities) && conflictItem.from.entities.includes('外墙保温'),
+    JSON.stringify(conflictItem && conflictItem.from && conflictItem.from.entities))
+  const conflictsPage = await get('/conflicts')
+  check('/conflicts 页面 200', conflictsPage.status === 200 && conflictsPage.text.startsWith('<!DOCTYPE html>'), String(conflictsPage.status))
+  check('/conflicts 页面是核验视图',
+    conflictsPage.text.includes('矛盾核验') && conflictsPage.text.includes('/dsh-brain/api/conflicts'))
+  check('/conflicts 设了防嗅探头', conflictsPage.headers.get('x-content-type-options') === 'nosniff')
+  const entitiesPage = await get('/entities')
+  check('/entities 页面 200', entitiesPage.status === 200 && entitiesPage.text.startsWith('<!DOCTYPE html>'), String(entitiesPage.status))
+  check('/entities 页面是实体总览',
+    entitiesPage.text.includes('/dsh-brain/api/entities') &&
+      entitiesPage.text.includes('只看孤儿') &&
+      entitiesPage.text.includes('实体'))
+  check('/entities 设了防嗅探头', entitiesPage.headers.get('x-content-type-options') === 'nosniff')
+  const statsAfter = await get('/api/stats')
+  check('/api/stats 反映实体与冲突',
+    statsAfter.json && statsAfter.json.entities && statsAfter.json.entities.total === 1 && statsAfter.json.conflicts === 1,
+    JSON.stringify({ entities: statsAfter.json && statsAfter.json.entities, conflicts: statsAfter.json && statsAfter.json.conflicts }))
+  await brain2.close()
+
+  // ── 8. 已有路由没被改坏 ──
+  const memories = await get('/api/memories?limit=10')
+  check('/api/memories 200', memories.status === 200 && memories.json && Array.isArray(memories.json.items), String(memories.status))
+  const scene = await get('/api/scene')
+  check('/api/scene 200', scene.status === 200 && scene.json && Array.isArray(scene.json.points), String(scene.status))
+  // ── 心海的边必须是真实关系边，不能是「同簇相邻」的假边 ──
+  // 本节点之前已经建了一条 contradicts（外墙保温 50mm ↔ 80mm），
+  // 断言要能区分「画了真关系」和「画了一堆看着像关系的近似连线」。
+  const sceneEdges = (scene.json && scene.json.edges) || []
+  const sceneBg = (scene.json && scene.json.backgroundEdges) || []
+  check('/api/scene 的边带真实 kind（不是 topic 假边）',
+    sceneEdges.length === 1 && sceneEdges[0].kind === 'contradicts' && sceneEdges.every((e) => e.kind !== 'topic'),
+    JSON.stringify(sceneEdges.map((e) => e.kind)))
+  check('/api/scene 边带 reason / 两端摘要 / 建立时间',
+    sceneEdges[0] && sceneEdges[0].reason === '厚度说法不一致' &&
+      typeof sceneEdges[0].fromSummary === 'string' && sceneEdges[0].fromSummary.length > 0 &&
+      typeof sceneEdges[0].toSummary === 'string' && sceneEdges[0].toSummary.length > 0 &&
+      typeof sceneEdges[0].createdAt === 'number' && sceneEdges[0].createdAt > 0,
+    JSON.stringify({ reason: sceneEdges[0] && sceneEdges[0].reason, createdAt: sceneEdges[0] && sceneEdges[0].createdAt }))
+  check('/api/scene 边两端都在点集里（不会有指向屏幕外的边）',
+    sceneEdges.every((e) => (scene.json.points || []).some((p) => p.id === e.a) &&
+      (scene.json.points || []).some((p) => p.id === e.b)))
+  check('/api/scene 假边降级到 backgroundEdges，不混进 edges',
+    Array.isArray(scene.json.backgroundEdges) &&
+      scene.json.backgroundEdges.every((e) => e.kind === 'topic') &&
+      scene.json.backgroundEdges.length > 0,
+    JSON.stringify({ edges: sceneEdges.length, background: sceneBg.length }))
+  check('/api/scene 明确报告没有降级', scene.json && scene.json.edgesDegraded === false, String(scene.json && scene.json.edgesDegraded))
+  check('/api/scene 统计把真实边与背景边分开算',
+    scene.json && scene.json.stats &&
+      scene.json.stats.edges === sceneEdges.length &&
+      scene.json.stats.backgroundEdges === sceneBg.length &&
+      scene.json.stats.edgesByKind && scene.json.stats.edgesByKind.contradicts === 1,
+    JSON.stringify(scene.json && scene.json.stats))
+  const sea = await get('/sea')
+  check('/sea 200', sea.status === 200 && sea.text.includes('</html>'), String(sea.status))
+  check('/sea 有分类图例和背景边开关',
+    sea.text.includes('id="legend"') && sea.text.includes('同簇相邻（背景）') && sea.text.includes('REL_LEGEND'))
+  const missing = await get('/nope')
+  check('未知路径 404', missing.status === 404, String(missing.status))
+
+  // ── 7b. M7：列表分页 / 矛盾动作（写库）/ 治理只读视图 ──
+  // 分页：limit/offset/total/hasMore 必须齐；越界 offset 返回空页但 total 仍真实
+  // （「越界」和「库里没有」是两件事，页面要能分辨）。
+  const page1 = await get('/api/memories?limit=1&offset=0')
+  check('/api/memories 支持分页字段',
+    page1.json && page1.json.total >= 2 && page1.json.limit === 1 && page1.json.offset === 0 &&
+      page1.json.items.length === 1 && page1.json.hasMore === true && page1.json.nextOffset === 1,
+    JSON.stringify({ total: page1.json && page1.json.total, hasMore: page1.json && page1.json.hasMore }))
+  const pageOver = await get('/api/memories?limit=5&offset=99999')
+  check('/api/memories 越界 offset 返回空页但 total 仍真实',
+    pageOver.json && pageOver.json.items.length === 0 && pageOver.json.total >= 2,
+    JSON.stringify({ items: pageOver.json && pageOver.json.items.length, total: pageOver.json && pageOver.json.total }))
+  const page2 = await get('/api/memories?limit=1&offset=1')
+  check('/api/memories 第二页与第一页不是同一条',
+    !!(page1.json && page2.json && page2.json.items.length === 1 &&
+      page2.json.items[0].memoryId !== page1.json.items[0].memoryId),
+    JSON.stringify({ a: page1.json && page1.json.items[0] && page1.json.items[0].memoryId, b: page2.json && page2.json.items[0] && page2.json.items[0].memoryId }))
+
+  // 写保护：不写 action 的请求一律 403（自定义头就是 CSRF 的门）。
+  const noHeader = await post('/api/conflicts/action', { edgeId: edge.id, action: 'not-conflict' })
+  check('矛盾动作缺 X-Brain-Action 头被拒 403',
+    noHeader.status === 403 && noHeader.json && noHeader.json.code === 'FORBIDDEN_NO_ACTION_HEADER', String(noHeader.status))
+  const badAction = await post('/api/conflicts/action', { edgeId: edge.id, action: 'nonsense' }, { 'X-Brain-Action': '1' })
+  check('矛盾动作非法 action 400',
+    badAction.status === 400 && badAction.json && badAction.json.code === 'INVALID_ACTION', String(badAction.status))
+  const missingEdge = await post('/api/conflicts/action', { edgeId: 'edge_nope', action: 'keep-left' }, { 'X-Brain-Action': '1' })
+  check('矛盾动作边不存在 404',
+    missingEdge.status === 404 && missingEdge.json && missingEdge.json.code === 'EDGE_NOT_FOUND', String(missingEdge.status))
+  const resolved = await post('/api/conflicts/action', { edgeId: edge.id, action: 'not-conflict', kind: 'refines' }, { 'X-Brain-Action': '1' })
+  check('矛盾动作 not-conflict 成功（删矛盾边 + 建细化边，两条记忆都不动）',
+    resolved.status === 200 && resolved.json && resolved.json.ok === true &&
+      resolved.json.edgeRemoved === true && !!resolved.json.newEdgeId && resolved.json.kind === 'refines',
+    JSON.stringify(resolved.json && { action: resolved.json.action, removed: resolved.json.edgeRemoved, kind: resolved.json.kind }))
+  check('矛盾动作落了审计流水（不允许静默改库）', !!(resolved.json && resolved.json.logged === true))
+  const afterAction = await get('/api/conflicts')
+  check('处理过的矛盾不再出现在待核验列表',
+    afterAction.json && Array.isArray(afterAction.json.items) && afterAction.json.items.length === 0,
+    String(afterAction.json && afterAction.json.items && afterAction.json.items.length))
+  const again = await post('/api/conflicts/action', { edgeId: edge.id, action: 'keep-left' }, { 'X-Brain-Action': '1' })
+  check('同一条边重复处理给 404（不会二次封口）', again.status === 404, String(again.status))
+
+  // 治理只读视图：能看，但明确 canWrite=false；读不到就是 null，不是 0。
+  const govJson = await get('/api/governance')
+  check('/api/governance 200 且明确只读',
+    govJson.status === 200 && govJson.json && govJson.json.ok === true && govJson.json.canWrite === false,
+    String(govJson.json && govJson.json.canWrite))
+  check('/api/governance 带备份/删除/账本/隔离四块',
+    !!(govJson.json && govJson.json.backups && govJson.json.deletions && govJson.json.ledger && govJson.json.isolation),
+    Object.keys(govJson.json || {}).join(','))
+  check('/api/governance 的「读不到」保持 null（不许填 0 冒充「没有」）',
+    !!(govJson.json && (govJson.json.backups.total === null || typeof govJson.json.backups.total === 'number')),
+    String(govJson.json && govJson.json.backups && govJson.json.backups.total))
+  const govPage = await get('/governance')
+  check('/governance 页面 200', govPage.status === 200 && govPage.text.startsWith('<!DOCTYPE html>'), String(govPage.status))
+  check('/governance 是只读视图（页面里没有写请求）',
+    govPage.text.includes('/dsh-brain/api/governance') && !/method\s*:\s*['"]POST/i.test(govPage.text),
+    'no POST in page')
+
+  // ── 9. 使用日志真的落在临时目录（不许污染生产观察期数据） ──
+  check('使用日志在临时目录', !usageLogPath.includes('E:/ds-h/dsh-brain/data/logs'), usageLogPath)
+  const { readUsageLog } = await import('../apps/brain-tools/usage-log.js')
+  const log = readUsageLog(usageLogPath)
+  // 4 条基础（3 模型通道 + 1 控制台）+ 4 条实体查询（仅 entity / 别名 / 不存在 / query+entity）
+  check('日志条目数与调用数一致', log.entries.length === 8, `entries=${log.entries.length}`)
+} catch (error) {
+  check('未捕获异常（不该有）', false, error instanceof Error ? error.message : String(error))
+} finally {
+  if (server) await new Promise((/** @type {(v?: unknown) => void} */ resolve) => server.close(() => resolve()))
+  const failed = checks.filter((c) => !c.ok)
+  console.log('\n' + JSON.stringify({
+    total: checks.length,
+    passed: checks.length - failed.length,
+    failed: failed.map((f) => ({ name: f.name, detail: f.detail })),
+    note: '临时库 + 临时日志，跑完即删；生产库与生产观察期数据均未触碰',
+  }, null, 2))
+  try { rmSync(dir, { recursive: true, force: true }) } catch { /* 清理失败不影响结论 */ }
+  if (failed.length > 0) process.exitCode = 1
+}

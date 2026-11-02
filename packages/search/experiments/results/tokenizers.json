@@ -1,0 +1,3121 @@
+{
+  "generated_at": "2026-10-28T11:14:01.574Z",
+  "node": "v24.19.0",
+  "platform": "win32/x64",
+  "sqlite": {
+    "version": "3.53.3",
+    "source_id": "2026-06-26 20:14:12 d4c0e51e4aeb96955b99185ab9cde75c339e2c29c3f3f12428d364a10d782c62",
+    "compile_options_fts5": [
+      "ENABLE_FTS3",
+      "ENABLE_FTS3_PARENTHESIS",
+      "ENABLE_FTS5"
+    ],
+    "compile_option_count": 50,
+    "fts5_compileoption_used": 1
+  },
+  "fts5": {
+    "basic_create": {
+      "ok": true,
+      "value": {
+        "rows": 1,
+        "match_whole_token_hits": 0
+      }
+    }
+  },
+  "tokenizers": [
+    {
+      "key": "unicode61",
+      "spec": "unicode61",
+      "note": null,
+      "table": "fts_unicode61",
+      "create": "ok",
+      "vocab": [
+        {
+          "term": "000",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "03图里首层平面标高是0",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "1200mm",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "186c",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "2400mm的板材",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "6m",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "build",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "cafe",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "deletion",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "epoch与pnpm",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "fts5的trigram分词器对三字以上中文才有效",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "pantone",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "resume",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "run",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "web",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "喷绘精度1440dpi",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "层高3",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "建施",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "用readsurface读取画布像素前要先等重绘完成",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "色卡",
+          "doc": 1,
+          "cnt": 1
+        }
+      ],
+      "error": null
+    },
+    {
+      "key": "trigram",
+      "spec": "trigram",
+      "note": null,
+      "table": "fts_trigram",
+      "create": "ok",
+      "vocab": [
+        {
+          "term": " 18",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": " bu",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": " ru",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": " ré",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": " 色卡",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "-03",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": ".00",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": ".6m",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "0.0",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "000",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "00m",
+          "doc": 1,
+          "cnt": 2
+        },
+        {
+          "term": "00，",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "03图",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "0dp",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "0mm",
+          "doc": 1,
+          "cnt": 2
+        },
+        {
+          "term": "0，层",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "120",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "144",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "186",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "200",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "240",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "3.6",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "3图里",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "400",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "40d",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "440",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "5的t",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "86c",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": ":we",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "_ep",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ace",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ads",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "afé",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "am分",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ant",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "bui",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "caf",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ce读",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ch与",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "d:w",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "del",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "dpi",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "dsu",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "e 1",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ead",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ele",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "epo",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "eti",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "e读取",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "fac",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "fts",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "fé ",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "gra",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "h与p",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "igr",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ild",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ion",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ld:",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "let",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "m r",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "mm×",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "mm的",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "m×2",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "mé ",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "m分词",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "m的板",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "n b",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "n_e",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ne ",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "npm",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "nto",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "och",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "on_",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "one",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "pan",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "pm ",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "pnp",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "poc",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ram",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "rea",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "rfa",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "rig",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "run",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "rés",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "s5的",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "sum",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "sur",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "tio",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ton",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "tri",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ts5",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "uil",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "umé",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "un ",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "urf",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "web",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "×24",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "é r",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "é 色",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ésu",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "三字以",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "上中文",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "与pn",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "中文才",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "以上中",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "像素前",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "先等重",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "分词器",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "前要先",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "卡，p",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "取画布",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "喷绘精",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "器对三",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "图里首",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "字以上",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "对三字",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "层平面",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "层高3",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "布像素",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "平面标",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "度14",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "建施-",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "才有效",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "文才有",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "施-0",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "是0.",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "材，喷",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "板材，",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "标高是",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "用re",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "画布像",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "的tr",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "的板材",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "等重绘",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "精度1",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "素前要",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "绘完成",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "绘精度",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "色卡，",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "要先等",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "词器对",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "读取画",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "里首层",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "重绘完",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "面标高",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "首层平",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "高3.",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "高是0",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "，pa",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "，喷绘",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "，层高",
+          "doc": 1,
+          "cnt": 1
+        }
+      ],
+      "error": null
+    },
+    {
+      "key": "porter",
+      "spec": "porter",
+      "note": null,
+      "table": "fts_porter",
+      "create": "ok",
+      "vocab": [
+        {
+          "term": "000",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "03图里首层平面标高是0",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "1200mm",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "186c",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "2400mm的板材",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "6m",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "build",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "cafe",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "delet",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "epoch与pnpm",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "fts5的trigram分词器对三字以上中文才有效",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "panton",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "resum",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "run",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "web",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "喷绘精度1440dpi",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "层高3",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "建施",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "用readsurface读取画布像素前要先等重绘完成",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "色卡",
+          "doc": 1,
+          "cnt": 1
+        }
+      ],
+      "error": null
+    },
+    {
+      "key": "ascii",
+      "spec": "ascii",
+      "note": null,
+      "table": "fts_ascii",
+      "create": "ok",
+      "vocab": [
+        {
+          "term": "000，层高3",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "03图里首层平面标高是0",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "1200mm×2400mm的板材，喷绘精度1440dpi",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "186c",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "6m",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "build",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "café",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "deletion",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "epoch与pnpm",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "fts5的trigram分词器对三字以上中文才有效",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "run",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "résumé",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "web",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "建施",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "用readsurface读取画布像素前要先等重绘完成",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "色卡，pantone",
+          "doc": 1,
+          "cnt": 1
+        }
+      ],
+      "error": null
+    },
+    {
+      "key": "unicode61_rd0",
+      "spec": "unicode61 remove_diacritics 0",
+      "note": null,
+      "table": "fts_unicode61_rd0",
+      "create": "ok",
+      "vocab": [
+        {
+          "term": "000",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "03图里首层平面标高是0",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "1200mm",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "186c",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "2400mm的板材",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "6m",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "build",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "café",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "deletion",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "epoch与pnpm",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "fts5的trigram分词器对三字以上中文才有效",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "pantone",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "run",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "résumé",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "web",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "喷绘精度1440dpi",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "层高3",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "建施",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "用readsurface读取画布像素前要先等重绘完成",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "色卡",
+          "doc": 1,
+          "cnt": 1
+        }
+      ],
+      "error": null
+    },
+    {
+      "key": "unicode61_rd2",
+      "spec": "unicode61 remove_diacritics 2",
+      "note": null,
+      "table": "fts_unicode61_rd2",
+      "create": "ok",
+      "vocab": [
+        {
+          "term": "000",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "03图里首层平面标高是0",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "1200mm",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "186c",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "2400mm的板材",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "6m",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "build",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "cafe",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "deletion",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "epoch与pnpm",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "fts5的trigram分词器对三字以上中文才有效",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "pantone",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "resume",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "run",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "web",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "喷绘精度1440dpi",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "层高3",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "建施",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "用readsurface读取画布像素前要先等重绘完成",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "色卡",
+          "doc": 1,
+          "cnt": 1
+        }
+      ],
+      "error": null
+    },
+    {
+      "key": "porter_unicode61",
+      "spec": "porter unicode61",
+      "note": null,
+      "table": "fts_porter_unicode61",
+      "create": "ok",
+      "vocab": [
+        {
+          "term": "000",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "03图里首层平面标高是0",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "1200mm",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "186c",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "2400mm的板材",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "6m",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "build",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "cafe",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "delet",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "epoch与pnpm",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "fts5的trigram分词器对三字以上中文才有效",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "panton",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "resum",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "run",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "web",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "喷绘精度1440dpi",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "层高3",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "建施",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "用readsurface读取画布像素前要先等重绘完成",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "色卡",
+          "doc": 1,
+          "cnt": 1
+        }
+      ],
+      "error": null
+    },
+    {
+      "key": "trigram_cs",
+      "spec": "trigram case_sensitive 1",
+      "note": null,
+      "table": "fts_trigram_cs",
+      "create": "ok",
+      "vocab": [
+        {
+          "term": " 18",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": " bu",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": " ru",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": " ré",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": " 色卡",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "-03",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": ".00",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": ".6m",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "0.0",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "000",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "00m",
+          "doc": 1,
+          "cnt": 2
+        },
+        {
+          "term": "00，",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "03图",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "0dp",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "0mm",
+          "doc": 1,
+          "cnt": 2
+        },
+        {
+          "term": "0，层",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "120",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "144",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "186",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "200",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "240",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "3.6",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "3图里",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "400",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "40d",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "440",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "5的t",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "86C",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": ":we",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ANT",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "Caf",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "E 1",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "FTS",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "NE ",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "NTO",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ONE",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "PAN",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "S5的",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "Sur",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "TON",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "TS5",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "_ep",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ace",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "adS",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "afé",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "am分",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "bui",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ce读",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ch与",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "d:w",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "dSu",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "del",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "dpi",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ead",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ele",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "epo",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "eti",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "e读取",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "fac",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "fé ",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "gra",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "h与p",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "igr",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ild",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ion",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ld:",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "let",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "m r",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "mm×",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "mm的",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "m×2",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "mé ",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "m分词",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "m的板",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "n b",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "n_e",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "npm",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "och",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "on_",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "pm ",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "pnp",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "poc",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ram",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "rea",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "rfa",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "rig",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "run",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "rés",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "sum",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "tio",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "tri",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "uil",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "umé",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "un ",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "urf",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "web",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "×24",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "é r",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "é 色",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "ésu",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "三字以",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "上中文",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "与pn",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "中文才",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "以上中",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "像素前",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "先等重",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "分词器",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "前要先",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "卡，P",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "取画布",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "喷绘精",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "器对三",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "图里首",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "字以上",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "对三字",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "层平面",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "层高3",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "布像素",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "平面标",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "度14",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "建施-",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "才有效",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "文才有",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "施-0",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "是0.",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "材，喷",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "板材，",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "标高是",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "用re",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "画布像",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "的tr",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "的板材",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "等重绘",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "精度1",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "素前要",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "绘完成",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "绘精度",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "色卡，",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "要先等",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "词器对",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "读取画",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "里首层",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "重绘完",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "面标高",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "首层平",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "高3.",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "高是0",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "，PA",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "，喷绘",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "，层高",
+          "doc": 1,
+          "cnt": 1
+        }
+      ],
+      "error": null
+    },
+    {
+      "key": "unicode61_no_sep",
+      "spec": "unicode61 separators ' '",
+      "note": "只把空格当分隔符",
+      "table": "fts_unicode61_no_sep",
+      "create": "ok",
+      "vocab": [
+        {
+          "term": "000",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "03图里首层平面标高是0",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "1200mm",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "186c",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "2400mm的板材",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "6m",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "build",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "cafe",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "deletion",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "epoch与pnpm",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "fts5的trigram分词器对三字以上中文才有效",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "pantone",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "resume",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "run",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "web",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "喷绘精度1440dpi",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "层高3",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "建施",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "用readsurface读取画布像素前要先等重绘完成",
+          "doc": 1,
+          "cnt": 1
+        },
+        {
+          "term": "色卡",
+          "doc": 1,
+          "cnt": 1
+        }
+      ],
+      "error": null
+    }
+  ],
+  "vocab": {
+    "unicode61": {
+      "create": "ok",
+      "term_count": 20,
+      "terms": [
+        "000",
+        "03图里首层平面标高是0",
+        "1200mm",
+        "186c",
+        "2400mm的板材",
+        "6m",
+        "build",
+        "cafe",
+        "deletion",
+        "epoch与pnpm",
+        "fts5的trigram分词器对三字以上中文才有效",
+        "pantone",
+        "resume",
+        "run",
+        "web",
+        "喷绘精度1440dpi",
+        "层高3",
+        "建施",
+        "用readsurface读取画布像素前要先等重绘完成",
+        "色卡"
+      ]
+    },
+    "trigram": {
+      "create": "ok",
+      "term_count": 151,
+      "terms": [
+        " 18",
+        " bu",
+        " ru",
+        " ré",
+        " 色卡",
+        "-03",
+        ".00",
+        ".6m",
+        "0.0",
+        "000",
+        "00m",
+        "00，",
+        "03图",
+        "0dp",
+        "0mm",
+        "0，层",
+        "120",
+        "144",
+        "186",
+        "200",
+        "240",
+        "3.6",
+        "3图里",
+        "400",
+        "40d",
+        "440",
+        "5的t",
+        "86c",
+        ":we",
+        "_ep",
+        "ace",
+        "ads",
+        "afé",
+        "am分",
+        "ant",
+        "bui",
+        "caf",
+        "ce读",
+        "ch与",
+        "d:w",
+        "del",
+        "dpi",
+        "dsu",
+        "e 1",
+        "ead",
+        "ele",
+        "epo",
+        "eti",
+        "e读取",
+        "fac",
+        "fts",
+        "fé ",
+        "gra",
+        "h与p",
+        "igr",
+        "ild",
+        "ion",
+        "ld:",
+        "let",
+        "m r",
+        "mm×",
+        "mm的",
+        "m×2",
+        "mé ",
+        "m分词",
+        "m的板",
+        "n b",
+        "n_e",
+        "ne ",
+        "npm",
+        "nto",
+        "och",
+        "on_",
+        "one",
+        "pan",
+        "pm ",
+        "pnp",
+        "poc",
+        "ram",
+        "rea",
+        "rfa",
+        "rig",
+        "run",
+        "rés",
+        "s5的",
+        "sum",
+        "sur",
+        "tio",
+        "ton",
+        "tri",
+        "ts5",
+        "uil",
+        "umé",
+        "un ",
+        "urf",
+        "web",
+        "×24",
+        "é r",
+        "é 色",
+        "ésu",
+        "三字以",
+        "上中文",
+        "与pn",
+        "中文才",
+        "以上中",
+        "像素前",
+        "先等重",
+        "分词器",
+        "前要先",
+        "卡，p",
+        "取画布",
+        "喷绘精",
+        "器对三",
+        "图里首",
+        "字以上",
+        "对三字",
+        "层平面",
+        "层高3",
+        "布像素",
+        "平面标",
+        "度14",
+        "建施-",
+        "才有效",
+        "文才有",
+        "施-0",
+        "是0.",
+        "材，喷",
+        "板材，",
+        "标高是",
+        "用re",
+        "画布像",
+        "的tr",
+        "的板材",
+        "等重绘",
+        "精度1",
+        "素前要",
+        "绘完成",
+        "绘精度",
+        "色卡，",
+        "要先等",
+        "词器对",
+        "读取画",
+        "里首层",
+        "重绘完",
+        "面标高",
+        "首层平",
+        "高3.",
+        "高是0",
+        "，pa",
+        "，喷绘",
+        "，层高"
+      ]
+    },
+    "porter": {
+      "create": "ok",
+      "term_count": 20,
+      "terms": [
+        "000",
+        "03图里首层平面标高是0",
+        "1200mm",
+        "186c",
+        "2400mm的板材",
+        "6m",
+        "build",
+        "cafe",
+        "delet",
+        "epoch与pnpm",
+        "fts5的trigram分词器对三字以上中文才有效",
+        "panton",
+        "resum",
+        "run",
+        "web",
+        "喷绘精度1440dpi",
+        "层高3",
+        "建施",
+        "用readsurface读取画布像素前要先等重绘完成",
+        "色卡"
+      ]
+    },
+    "ascii": {
+      "create": "ok",
+      "term_count": 16,
+      "terms": [
+        "000，层高3",
+        "03图里首层平面标高是0",
+        "1200mm×2400mm的板材，喷绘精度1440dpi",
+        "186c",
+        "6m",
+        "build",
+        "café",
+        "deletion",
+        "epoch与pnpm",
+        "fts5的trigram分词器对三字以上中文才有效",
+        "run",
+        "résumé",
+        "web",
+        "建施",
+        "用readsurface读取画布像素前要先等重绘完成",
+        "色卡，pantone"
+      ]
+    },
+    "unicode61_rd0": {
+      "create": "ok",
+      "term_count": 20,
+      "terms": [
+        "000",
+        "03图里首层平面标高是0",
+        "1200mm",
+        "186c",
+        "2400mm的板材",
+        "6m",
+        "build",
+        "café",
+        "deletion",
+        "epoch与pnpm",
+        "fts5的trigram分词器对三字以上中文才有效",
+        "pantone",
+        "run",
+        "résumé",
+        "web",
+        "喷绘精度1440dpi",
+        "层高3",
+        "建施",
+        "用readsurface读取画布像素前要先等重绘完成",
+        "色卡"
+      ]
+    },
+    "unicode61_rd2": {
+      "create": "ok",
+      "term_count": 20,
+      "terms": [
+        "000",
+        "03图里首层平面标高是0",
+        "1200mm",
+        "186c",
+        "2400mm的板材",
+        "6m",
+        "build",
+        "cafe",
+        "deletion",
+        "epoch与pnpm",
+        "fts5的trigram分词器对三字以上中文才有效",
+        "pantone",
+        "resume",
+        "run",
+        "web",
+        "喷绘精度1440dpi",
+        "层高3",
+        "建施",
+        "用readsurface读取画布像素前要先等重绘完成",
+        "色卡"
+      ]
+    },
+    "porter_unicode61": {
+      "create": "ok",
+      "term_count": 20,
+      "terms": [
+        "000",
+        "03图里首层平面标高是0",
+        "1200mm",
+        "186c",
+        "2400mm的板材",
+        "6m",
+        "build",
+        "cafe",
+        "delet",
+        "epoch与pnpm",
+        "fts5的trigram分词器对三字以上中文才有效",
+        "panton",
+        "resum",
+        "run",
+        "web",
+        "喷绘精度1440dpi",
+        "层高3",
+        "建施",
+        "用readsurface读取画布像素前要先等重绘完成",
+        "色卡"
+      ]
+    },
+    "trigram_cs": {
+      "create": "ok",
+      "term_count": 151,
+      "terms": [
+        " 18",
+        " bu",
+        " ru",
+        " ré",
+        " 色卡",
+        "-03",
+        ".00",
+        ".6m",
+        "0.0",
+        "000",
+        "00m",
+        "00，",
+        "03图",
+        "0dp",
+        "0mm",
+        "0，层",
+        "120",
+        "144",
+        "186",
+        "200",
+        "240",
+        "3.6",
+        "3图里",
+        "400",
+        "40d",
+        "440",
+        "5的t",
+        "86C",
+        ":we",
+        "ANT",
+        "Caf",
+        "E 1",
+        "FTS",
+        "NE ",
+        "NTO",
+        "ONE",
+        "PAN",
+        "S5的",
+        "Sur",
+        "TON",
+        "TS5",
+        "_ep",
+        "ace",
+        "adS",
+        "afé",
+        "am分",
+        "bui",
+        "ce读",
+        "ch与",
+        "d:w",
+        "dSu",
+        "del",
+        "dpi",
+        "ead",
+        "ele",
+        "epo",
+        "eti",
+        "e读取",
+        "fac",
+        "fé ",
+        "gra",
+        "h与p",
+        "igr",
+        "ild",
+        "ion",
+        "ld:",
+        "let",
+        "m r",
+        "mm×",
+        "mm的",
+        "m×2",
+        "mé ",
+        "m分词",
+        "m的板",
+        "n b",
+        "n_e",
+        "npm",
+        "och",
+        "on_",
+        "pm ",
+        "pnp",
+        "poc",
+        "ram",
+        "rea",
+        "rfa",
+        "rig",
+        "run",
+        "rés",
+        "sum",
+        "tio",
+        "tri",
+        "uil",
+        "umé",
+        "un ",
+        "urf",
+        "web",
+        "×24",
+        "é r",
+        "é 色",
+        "ésu",
+        "三字以",
+        "上中文",
+        "与pn",
+        "中文才",
+        "以上中",
+        "像素前",
+        "先等重",
+        "分词器",
+        "前要先",
+        "卡，P",
+        "取画布",
+        "喷绘精",
+        "器对三",
+        "图里首",
+        "字以上",
+        "对三字",
+        "层平面",
+        "层高3",
+        "布像素",
+        "平面标",
+        "度14",
+        "建施-",
+        "才有效",
+        "文才有",
+        "施-0",
+        "是0.",
+        "材，喷",
+        "板材，",
+        "标高是",
+        "用re",
+        "画布像",
+        "的tr",
+        "的板材",
+        "等重绘",
+        "精度1",
+        "素前要",
+        "绘完成",
+        "绘精度",
+        "色卡，",
+        "要先等",
+        "词器对",
+        "读取画",
+        "里首层",
+        "重绘完",
+        "面标高",
+        "首层平",
+        "高3.",
+        "高是0",
+        "，PA",
+        "，喷绘",
+        "，层高"
+      ]
+    },
+    "unicode61_no_sep": {
+      "create": "ok",
+      "term_count": 20,
+      "terms": [
+        "000",
+        "03图里首层平面标高是0",
+        "1200mm",
+        "186c",
+        "2400mm的板材",
+        "6m",
+        "build",
+        "cafe",
+        "deletion",
+        "epoch与pnpm",
+        "fts5的trigram分词器对三字以上中文才有效",
+        "pantone",
+        "resume",
+        "run",
+        "web",
+        "喷绘精度1440dpi",
+        "层高3",
+        "建施",
+        "用readsurface读取画布像素前要先等重绘完成",
+        "色卡"
+      ]
+    }
+  },
+  "match_matrix": [
+    {
+      "tokenizer": "unicode61",
+      "query": "铜版",
+      "kind": "zh_twochar",
+      "raw_ok": true,
+      "raw_hits": 0,
+      "raw_error": null,
+      "phrase_ok": true,
+      "phrase_hits": 0,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "unicode61",
+      "query": "铜",
+      "kind": "zh_single",
+      "raw_ok": true,
+      "raw_hits": 0,
+      "raw_error": null,
+      "phrase_ok": true,
+      "phrase_hits": 0,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "unicode61",
+      "query": "建施-03",
+      "kind": "drawing_no",
+      "raw_ok": false,
+      "raw_hits": null,
+      "raw_error": "no such column: 03",
+      "phrase_ok": true,
+      "phrase_hits": 0,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "unicode61",
+      "query": "JS-2026-017",
+      "kind": "drawing_no",
+      "raw_ok": false,
+      "raw_hits": null,
+      "raw_error": "no such column: 2026",
+      "phrase_ok": true,
+      "phrase_hits": 0,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "unicode61",
+      "query": "1200mm",
+      "kind": "size_unit",
+      "raw_ok": true,
+      "raw_hits": 1,
+      "raw_error": null,
+      "phrase_ok": true,
+      "phrase_hits": 1,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "unicode61",
+      "query": "2400×600",
+      "kind": "size_unit",
+      "raw_ok": true,
+      "raw_hits": 0,
+      "raw_error": null,
+      "phrase_ok": true,
+      "phrase_hits": 0,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "unicode61",
+      "query": "1.2m",
+      "kind": "size_unit",
+      "raw_ok": false,
+      "raw_hits": null,
+      "raw_error": "fts5: syntax error near \".\"",
+      "phrase_ok": true,
+      "phrase_hits": 0,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "unicode61",
+      "query": "readSurface",
+      "kind": "code_ident",
+      "raw_ok": true,
+      "raw_hits": 0,
+      "raw_error": null,
+      "phrase_ok": true,
+      "phrase_hits": 0,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "unicode61",
+      "query": "deletion_epoch",
+      "kind": "code_ident",
+      "raw_ok": true,
+      "raw_hits": 0,
+      "raw_error": null,
+      "phrase_ok": true,
+      "phrase_hits": 0,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "unicode61",
+      "query": "build:web",
+      "kind": "code_ident",
+      "raw_ok": false,
+      "raw_hits": null,
+      "raw_error": "no such column: build",
+      "phrase_ok": true,
+      "phrase_hits": 1,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "unicode61",
+      "query": "M100",
+      "kind": "code_ident",
+      "raw_ok": true,
+      "raw_hits": 0,
+      "raw_error": null,
+      "phrase_ok": true,
+      "phrase_hits": 0,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "trigram",
+      "query": "铜版",
+      "kind": "zh_twochar",
+      "raw_ok": true,
+      "raw_hits": 0,
+      "raw_error": null,
+      "phrase_ok": true,
+      "phrase_hits": 0,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "trigram",
+      "query": "铜",
+      "kind": "zh_single",
+      "raw_ok": true,
+      "raw_hits": 0,
+      "raw_error": null,
+      "phrase_ok": true,
+      "phrase_hits": 0,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "trigram",
+      "query": "建施-03",
+      "kind": "drawing_no",
+      "raw_ok": false,
+      "raw_hits": null,
+      "raw_error": "no such column: 03",
+      "phrase_ok": true,
+      "phrase_hits": 1,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "trigram",
+      "query": "JS-2026-017",
+      "kind": "drawing_no",
+      "raw_ok": false,
+      "raw_hits": null,
+      "raw_error": "no such column: 2026",
+      "phrase_ok": true,
+      "phrase_hits": 0,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "trigram",
+      "query": "1200mm",
+      "kind": "size_unit",
+      "raw_ok": true,
+      "raw_hits": 1,
+      "raw_error": null,
+      "phrase_ok": true,
+      "phrase_hits": 1,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "trigram",
+      "query": "2400×600",
+      "kind": "size_unit",
+      "raw_ok": true,
+      "raw_hits": 0,
+      "raw_error": null,
+      "phrase_ok": true,
+      "phrase_hits": 0,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "trigram",
+      "query": "1.2m",
+      "kind": "size_unit",
+      "raw_ok": false,
+      "raw_hits": null,
+      "raw_error": "fts5: syntax error near \".\"",
+      "phrase_ok": true,
+      "phrase_hits": 0,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "trigram",
+      "query": "readSurface",
+      "kind": "code_ident",
+      "raw_ok": true,
+      "raw_hits": 1,
+      "raw_error": null,
+      "phrase_ok": true,
+      "phrase_hits": 1,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "trigram",
+      "query": "deletion_epoch",
+      "kind": "code_ident",
+      "raw_ok": true,
+      "raw_hits": 1,
+      "raw_error": null,
+      "phrase_ok": true,
+      "phrase_hits": 1,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "trigram",
+      "query": "build:web",
+      "kind": "code_ident",
+      "raw_ok": false,
+      "raw_hits": null,
+      "raw_error": "no such column: build",
+      "phrase_ok": true,
+      "phrase_hits": 1,
+      "phrase_error": null
+    },
+    {
+      "tokenizer": "trigram",
+      "query": "M100",
+      "kind": "code_ident",
+      "raw_ok": true,
+      "raw_hits": 0,
+      "raw_error": null,
+      "phrase_ok": true,
+      "phrase_hits": 0,
+      "phrase_error": null
+    }
+  ],
+  "short_query": [
+    {
+      "query": "铜",
+      "chars": 1,
+      "tokenizer": "trigram",
+      "raw_ok": true,
+      "raw_hits": 0,
+      "raw_error": null
+    },
+    {
+      "query": "铜版",
+      "chars": 2,
+      "tokenizer": "trigram",
+      "raw_ok": true,
+      "raw_hits": 0,
+      "raw_error": null
+    },
+    {
+      "query": "铜版纸",
+      "chars": 3,
+      "tokenizer": "trigram",
+      "raw_ok": true,
+      "raw_hits": 1,
+      "raw_error": null
+    },
+    {
+      "query": "铜版纸反",
+      "chars": 4,
+      "tokenizer": "trigram",
+      "raw_ok": true,
+      "raw_hits": 1,
+      "raw_error": null
+    },
+    {
+      "query": "readSurface",
+      "chars": 11,
+      "tokenizer": "trigram",
+      "raw_ok": true,
+      "raw_hits": 0,
+      "raw_error": null
+    },
+    {
+      "query": "read",
+      "chars": 4,
+      "tokenizer": "trigram",
+      "raw_ok": true,
+      "raw_hits": 0,
+      "raw_error": null
+    },
+    {
+      "query": "R",
+      "chars": 1,
+      "tokenizer": "trigram",
+      "raw_ok": true,
+      "raw_hits": 0,
+      "raw_error": null
+    },
+    {
+      "query": "r",
+      "chars": 1,
+      "tokenizer": "trigram",
+      "raw_ok": true,
+      "raw_hits": 0,
+      "raw_error": null
+    }
+  ],
+  "notes": [],
+  "short_query_table": "fts_trigram",
+  "verdict": {
+    "fts5_available": true,
+    "trigram_available": true,
+    "ascii_available": true,
+    "porter_available": true,
+    "unicode61_works_for_cjk_word_search": false,
+    "trigram_min_query_chars": null
+  }
+}
