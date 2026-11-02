@@ -127,10 +127,10 @@
 #      [brain-tools] 删除队列清理已挂载（启动 15s 后一次，之后每 5 分钟）
 
 # 2. 写入/遗忘有埋点了（新记录 channel=write）
-Get-Content E:\ds-h\dsh-brain\data\logs\usage.jsonl -Tail 5
+Get-Content <repo>\data\logs\usage.jsonl -Tail 5
 
 # 3. 自动提取开始留痕（正常的话每回合一行 no_candidate，命中才有 created）
-Get-Content E:\ds-h\dsh-brain\data\logs\auto-extract.jsonl -Tail 5
+Get-Content <repo>\data\logs\auto-extract.jsonl -Tail 5
 
 # 4. 提示注入真的进了请求：问一句「上次那个参数是多少」，
 #    看模型有没有第一动作就 brain_search（usage.jsonl 里应出现 channel=tool 的新记录）

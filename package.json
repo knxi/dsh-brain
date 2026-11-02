@@ -8,6 +8,7 @@
     "node": ">=22.13.0"
   },
   "scripts": {
+    "install:brain": "node tools/install.mjs",
     "probe": "node apps/probe/run.mjs",
     "test": "node --test \"tests/**/*.test.mjs\"",
     "test:contract": "node tests/contract/run-all.mjs",

@@ -26,7 +26,7 @@
 
 ### 看「它本来会说什么」
 ```powershell
-cd E:\ds-h\dsh-brain
+cd <repo>
 node packages/persona/bin/social-dryrun.mjs     # 只读预演，不写库、不发
 ```
 实测输出（00:55 跑的）：

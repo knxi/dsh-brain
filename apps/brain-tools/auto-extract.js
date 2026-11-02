@@ -42,6 +42,7 @@
 
 import { appendFile, mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { DEFAULT_AUTO_EXTRACT_LOG_PATH } from './brain-home.js'
 
 /** 消息缓存最多保留多少个会话（超出驱逐最早插入的会话）。 */
 export const MAX_SESSIONS = 64
@@ -81,7 +82,7 @@ export const DEICTIC_MAX_CHARS = 6
 export const AUTO_MARK = '（自动提取）'
 
 /** sidecar 默认落点（生产）。测试必须显式传临时路径，绝不碰这个文件。 */
-export const DEFAULT_AUTO_EXTRACT_LOG = 'E:/ds-h/dsh-brain/data/logs/auto-extract.jsonl'
+export const DEFAULT_AUTO_EXTRACT_LOG = DEFAULT_AUTO_EXTRACT_LOG_PATH
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 反例闸（先筛整句，再谈规则）

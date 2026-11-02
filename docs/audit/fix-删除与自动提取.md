@@ -3,7 +3,7 @@
 - 任务：`task-6`
 - 负责人：`fix-deletion`
 - 时间：2026-10-30 23:4x–23:5x（Asia/Shanghai）
-- 目标库：`E:\ds-h\dsh-brain\data\brain.db`（SQLite WAL，schema `0008`，被 3080 的 `dsh web` 进程 PID 37764 持有，启动于 22:25:43）
+- 目标库：`<repo>\data\brain.db`（SQLite WAL，schema `0008`，被 3080 的 `dsh web` 进程 PID 37764 持有，启动于 22:25:43）
 - 纪律：除「清 pending deletion job」这一必要动作外，**未做任何其它库写**；未重启服务；未改任何源码。
 
 ---
@@ -62,7 +62,7 @@
 ### 1.4 生产执行（一次，1 轮）
 
 ```
-node E:\ds-h\tmp\drain-deletion.mjs "E:\ds-h\dsh-brain\data\brain.db" --apply --rounds=1
+node E:\ds-h\tmp\drain-deletion.mjs "<repo>\data\brain.db" --apply --rounds=1
 ```
 连接参数 `busy_timeout=15000`（避免与 3080 进程写冲突），无 `SQLITE_BUSY`。
 
@@ -209,7 +209,7 @@ data.role = "user"
 
 **(5) 进程是否加载了这段代码 —— 排除了「代码根本没进进程」这一层**
 
-- profile 里 `~/.dsh/profiles/web/node_modules/@dsh-brain/brain-tools` 是 **Junction 软链** → `E:\ds-h\dsh-brain\apps\brain-tools`（不是拷贝副本），所以进程加载的就是磁盘版文件。
+- profile 里 `~/.dsh/profiles/web/node_modules/@dsh-brain/brain-tools` 是 **Junction 软链** → `<repo>\apps\brain-tools`（不是拷贝副本），所以进程加载的就是磁盘版文件。
 - 3080 进程启动 `2026-10-30 22:25:43`；`auto-extract.js` mtime `2026-10-30 19:59:47` **早于启动**。
 - `/dsh-brain/api/usage?days=1` 在 3080 上 **HTTP 200**，插件活着。
 - `index.js` 现在的 mtime `23:48:33` **晚于启动**（Lead/他人刚改过），所以当前进程跑的是 22:25 那版；但 22:25 那版必然已 import `auto-extract.js`（后者 19:59 就落地了）。
@@ -263,7 +263,7 @@ HIT always-use "不得执行"  <=  "Current runtime context. This snapshot super
 4. **P1｜缓存容量**
    `MAX_MESSAGES_PER_SESSION=4` 在注入块场景下不够；修完 (3) 后可以维持不动，否则建议提到 ≥8。
 5. **P2｜日志路径**
-   `auto-extract.js:77` `DEFAULT_AUTO_EXTRACT_LOG` 是硬编码绝对路径 `E:/ds-h/dsh-brain/data/logs/auto-extract.jsonl`；`index.js:208` 已支持 `config.autoExtractLogPath` 覆盖，可接受，但建议与 `used-later` 同风格（由 config 兜底、默认值用相对 repo 根）。
+   `auto-extract.js:77` `DEFAULT_AUTO_EXTRACT_LOG` 是硬编码绝对路径 `<repo>/data/logs/auto-extract.jsonl`；`index.js:208` 已支持 `config.autoExtractLogPath` 覆盖，可接受，但建议与 `used-later` 同风格（由 config 兜底、默认值用相对 repo 根）。
 
 ---
 

@@ -16,8 +16,9 @@
 import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { BRAIN_MIGRATIONS, BRAIN_LOG_DIR } from './brain-home.js'
 
-const MIGRATIONS = 'E:/ds-h/dsh-brain/migrations'
+const MIGRATIONS = BRAIN_MIGRATIONS
 
 /** @type {any[]} */
 const registered = []
@@ -83,7 +84,9 @@ try {
     deletionDrain: false,
   })
 
-  check('挂载三个工具', registered.length === 3,
+  // 2026-11-02：插件后来补了 fox_think / brain_reflection 两个工具，断言没跟上（5 个，不是 3 个）。
+  // 这里只验「数量对得上」，具体名字由下一个 check 点名验。
+  check('挂载五个工具', registered.length === 5,
     `registered=${registered.length} names=${registered.map((t) => t.name).join(',')}`)
 
   /** @type {Map<string, any>} */
@@ -214,7 +217,7 @@ try {
   check('失败检索不算进零命中',
     retrievalZero === 2 && retrievalFail === 1,
     `zero=${retrievalZero}（两次真零命中）fail=${retrievalFail}（一次空 query）· 全量 zero=${usageSummary.zeroHitCount} fail=${usageSummary.failCount}`)
-  check('使用日志没落到生产路径', !usageLogPath.includes('E:/ds-h/dsh-brain/data/logs'), usageLogPath)
+  check('使用日志没落到生产路径', !usageLogPath.includes(BRAIN_LOG_DIR), usageLogPath)
 
   // ── 7. usedLater：turn/end 判定（只认回答里的连续原文） ──
   // 这一段验的是「整条观测链」：apply 真挂了 session/event → 检索真缓存了正文 →
@@ -247,7 +250,7 @@ try {
   check('证据只记长度与哈希，不落正文',
     !!evidence && /^[0-9a-f]{8}$/.test(evidence.quoteHash) && !JSON.stringify(evidence).includes('铝板材质'),
     `quoteHash=${evidence && evidence.quoteHash}`)
-  check('usedLater 日志在临时目录', !usedLaterLogPath.includes('E:/ds-h/dsh-brain/data/logs'), usedLaterLogPath)
+  check('usedLater 日志在临时目录', !usedLaterLogPath.includes(BRAIN_LOG_DIR), usedLaterLogPath)
 
   // ── 8. 记忆提示注入：让模型想得起来用它（2026-10-30 深夜） ──
   check('提示注入挂上了 system-prompt/assemble', assembleHandlers.length === 1, `handlers=${assembleHandlers.length}`)

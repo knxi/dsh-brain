@@ -37,7 +37,7 @@
 
 ```powershell
 # 1) 改一行页面文案
-(Get-Content E:\ds-h\dsh-brain\apps\brain-tools\persona-page.js -Raw) -replace '人格与主动社交', '人格与主动社交（热重载测试）' | Set-Content E:\ds-h\dsh-brain\apps\brain-tools\persona-page.js
+(Get-Content <repo>\apps\brain-tools\persona-page.js -Raw) -replace '人格与主动社交', '人格与主动社交（热重载测试）' | Set-Content <repo>\apps\brain-tools\persona-page.js
 
 # 2) 刷新 /dsh-brain/persona —— 标题应该立刻变，不用重启
 # 3) 改回来，再刷新

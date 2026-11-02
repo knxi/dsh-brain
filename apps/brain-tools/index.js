@@ -45,6 +45,21 @@ import {
   NOT_CONFLICT_KINDS,
   DEFAULT_CONFLICT_LOG,
 } from './conflict-log.js'
+// 路径统一从 brain-home.js 推（2026-11-02）：不再把 E:/ds-h/... 写死在这里。
+// 换一台电脑时，这一层是「装上了但什么都没发生」的根因，详见 brain-home.js 顶部。
+import {
+  BRAIN_HOME,
+  BRAIN_HOME_SOURCE,
+  BRAIN_DATA,
+  DEFAULT_STORE_PATH as DEFAULT_STORE,
+  BRAIN_MIGRATIONS as DEFAULT_MIGRATIONS,
+  DEFAULT_USAGE_LOG_PATH as DEFAULT_USAGE_LOG,
+  DEFAULT_SOCIAL_OUTBOX_PATH,
+  DEFAULT_CHANNEL_CONFIG_PATH,
+  DEFAULT_SOCIAL_AUTO_PATH,
+  DEFAULT_SESSION_SIGNAL_PATH,
+  SESSION_SIGNAL_INDEX_URL,
+} from './brain-home.js'
 
 export const name = 'brain-tools'
 export const inject = ['tools', 'webServer']
@@ -88,15 +103,11 @@ const loadPageModule = async (fileName) => {
 /** 控制台路由前缀：挂在 DSH 自己的 webServer 上，同源同端口，不额外起服务。 */
 const ROUTE = '/dsh-brain'
 
-/** 默认生产库路径。可以用 config.storePath 覆盖。 */
-const DEFAULT_STORE = 'E:/ds-h/dsh-brain/data/brain.db'
-/** 默认迁移目录 */
-const DEFAULT_MIGRATIONS = 'E:/ds-h/dsh-brain/migrations'
 /**
- * 使用日志默认落点。放 data/logs/ 而不是库旁边：它是观测数据，
- * 不进主账、不参与备份/恢复/删除账本，过期可以直接删文件。
+ * 默认库路径 / 迁移目录 / 使用日志落点 —— 全部来自 brain-home.js 的推导结果。
+ * 想指定位置：cordis config 里给 storePath / migrationsDir / usageLogPath，
+ * 或者设环境变量 DSH_BRAIN_HOME 指向仓库根。
  */
-const DEFAULT_USAGE_LOG = 'E:/ds-h/dsh-brain/data/logs/usage.jsonl'
 /** 使用情况页默认统计窗口（天） */
 const DEFAULT_USAGE_WINDOW_DAYS = 7
 
@@ -273,7 +284,7 @@ export function apply(ctx, config) {
   // 之所以能直接外发：主人在 2026-10-31 凌晨明确要求「功能要完整可用、不要什么边界」，
   // 并把它接到的通道就是**发给他本人的 QQ 单聊**（不是群、不是第三方）。
   // 发送仍受三层闸门约束：paused / social.enabled / dailyCap + quietHours（均在门面里）。
-  const socialOutboxPath = (config && config.socialOutboxPath) || 'E:/ds-h/dsh-brain/data/logs/social-outbox.jsonl'
+  const socialOutboxPath = (config && config.socialOutboxPath) || DEFAULT_SOCIAL_OUTBOX_PATH
   /** dsh-im 的机器人调用标识。**不写死**（2026-10-31 改）：这个仓库是 public，
    *  本机私有标识不该出现在公开代码里。首选读 `data/persona/channel.json`
    *  （loadChannelConfig），其次 config / 环境变量；都没有就留空，让人自己配。 */
@@ -285,7 +296,7 @@ export function apply(ctx, config) {
   // ── 通道配置（2026-10-31）：不再写死一个 QQ，可换任意 dsh-im 目标 ──────
   // 存文件而不是存库：这是一条「运行参数」，不是业务事实；改完立刻生效，不需要迁移。
   // 结构：{ botId, targetId, channel, label }。文件不存在时用上面的默认值（当前 QQ 单聊）。
-  const channelConfigPath = (config && config.channelConfigPath) || 'E:/ds-h/dsh-brain/data/persona/channel.json'
+  const channelConfigPath = (config && config.channelConfigPath) || DEFAULT_CHANNEL_CONFIG_PATH
   /** @returns {{ botId: string, targetId: string, channel: string, label: string }} */
   const loadChannelConfig = () => {
     try {
@@ -315,7 +326,7 @@ export function apply(ctx, config) {
   // 关键点：不是启动时读一次，而是**每次送达前现读**——所以面板上点完开关立刻生效，不用重启。
   // 也不读 cordis.patch.yml：配置归面板，源码归代码，两边不混。
   const socialAutoConfigPath = (config && config.socialAutoConfigPath)
-    || 'E:/ds-h/dsh-brain/data/persona/social-auto.json'
+    || DEFAULT_SOCIAL_AUTO_PATH
   /**
    * 读主动送达设置。文件不存在或坏了 → 用保守默认（开着、只走 console）。
    * @returns {{ enabled: boolean, mode: 'console'|'both' }}
@@ -414,7 +425,7 @@ export function apply(ctx, config) {
   // 索引器（packages/persona/src/session-signal-index.js）扫真实会话产出信号缓存，
   // 这里只负责**懒读**：5 分钟内复用，读不到返回 null（门面据此如实说「没有依据」）。
   const sessionSignalCachePath = (config && config.sessionSignalCachePath)
-    || 'E:/ds-h/dsh-brain/data/persona/session-signals.json'
+    || DEFAULT_SESSION_SIGNAL_PATH
   /** @type {any|null} */
   let sessionSignalCache = null
   let sessionSignalCacheAt = 0
@@ -1156,10 +1167,11 @@ export function apply(ctx, config) {
     : 30 * 60 * 1000
   const driveSocial = async () => {
     try {
-      // 先刷新会话信号索引。用绝对路径动态 import：brain-tools 只 junction 了 memory 包，
-      // 直接写包名 '@dsh-brain/persona' 在这里解析不到；这是项目内固定路径，不用相对路径绕。
+      // 先刷新会话信号索引。用绝对 file URL 动态 import：brain-tools 只 junction 了 memory 包，
+      // 直接写包名 '@dsh-brain/persona' 在这里解析不到。
+      // URL 由 brain-home.js 从 import.meta.url 推出（原来写死 file:///E:/ds-h/...，换机必炸）。
       try {
-        const indexMod = await import('file:///E:/ds-h/dsh-brain/packages/persona/src/session-signal-index.js')
+        const indexMod = await import(SESSION_SIGNAL_INDEX_URL)
         if (indexMod && typeof indexMod.refreshSignalIndex === 'function') {
           const refreshed = await indexMod.refreshSignalIndex({ cachePath: sessionSignalCachePath })
           if (!refreshed.ok) {

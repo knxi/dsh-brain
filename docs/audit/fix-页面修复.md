@@ -108,7 +108,7 @@ const usageApi = '/dsh-brain/api/usage?days=' + days
 ### 1. 语法
 
 ```powershell
-cd E:\ds-h\dsh-brain
+cd <repo>
 node --check apps\brain-tools\usage-page.js     # exit=0
 ```
 

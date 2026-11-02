@@ -2,7 +2,7 @@
 
 > 执行者：`persona-data`（teammate）
 > 执行时间：2026-10-31 00:37 – 00:52（Asia/Shanghai）
-> 生产库：`E:\ds-h\dsh-brain\data\brain.db`（被 3080 的 dsh web 进程持有，WAL 模式）
+> 生产库：`<repo>\data\brain.db`（被 3080 的 dsh web 进程持有，WAL 模式）
 > 实际运行环境：**Node v24.19.0**（任务书写的是 v22.22.2，本机实测是 24.19.0；`node:sqlite` 与 `zlib.zstdDecompressSync` 均可用）
 > 结论：三步全部完成，页面三块空数据已变成真实数据；`node --test` 989 pass / 0 fail。
 
@@ -47,7 +47,7 @@ node tools/backup-manual-persona.mjs
 
 | 项 | 值 |
 |---|---|
-| 备份路径 | `E:\ds-h\dsh-brain\data\backups\manual-before-persona-data-20261031-003706.db` |
+| 备份路径 | `<repo>\data\backups\manual-before-persona-data-20261031-003706.db` |
 | 源库字节 | 4,399,104 |
 | 备份字节 | 4,403,200 |
 | 源库 `PRAGMA integrity_check` | `ok` |
@@ -91,7 +91,7 @@ node tools/init-person.mjs
 node tools/import-persona-fox.mjs --dry-run
 ```
 
-来源：`C:\Users\su\.dsh\AGENTS.md`，10,333 字节，`sourceHash=1cfd8a5440d2757ea516d6e5743b6d477a0ebad0b6aed2086a39d946603b9677`（sha256，用于「文件改了才重新导入」）。
+来源：`C:\Users\<you>\.dsh\AGENTS.md`，10,333 字节，`sourceHash=1cfd8a5440d2757ea516d6e5743b6d477a0ebad0b6aed2086a39d946603b9677`（sha256，用于「文件改了才重新导入」）。
 
 九字段解析结果（中文 Markdown 的标题层级识别正确）：
 
@@ -140,7 +140,7 @@ node tools/import-persona-fox.mjs
 
 ### 4.1 数据从哪来、怎么筛（这一步最容易造假，写清楚）
 
-来源：`C:\Users\su\.dsh\sessions\--E-ds-h--\<会话>\session.v4.jsonl.zstd`，106 个会话文件。
+来源：`C:\Users\<you>\.dsh\sessions\--E-ds-h--\<会话>\session.v4.jsonl.zstd`，106 个会话文件。
 
 **多帧解压**：文件是多帧 zstd，`zlib.zstdDecompressSync` 只解第一帧。按魔数 `28 b5 2f fd` 切帧，逐帧解压后拼接：
 
@@ -281,8 +281,8 @@ node --test "tests/**/*.test.mjs"
 
 ```powershell
 # 停服务后（或在服务停的时候）用备份覆盖回写
-Copy-Item "E:\ds-h\dsh-brain\data\backups\manual-before-persona-data-20261031-003706.db" "E:\ds-h\dsh-brain\data\brain.db" -Force
-Remove-Item "E:\ds-h\dsh-brain\data\brain.db-wal","E:\ds-h\dsh-brain\data\brain.db-shm" -Force -ErrorAction SilentlyContinue
+Copy-Item "<repo>\data\backups\manual-before-persona-data-20261031-003706.db" "<repo>\data\brain.db" -Force
+Remove-Item "<repo>\data\brain.db-wal","<repo>\data\brain.db-shm" -Force -ErrorAction SilentlyContinue
 ```
 
 备份覆盖点：B、C 两步**全部**写入之前。回滚后 `persona_profile`/`persona_version`/141 条关系事件都会消失，`memories` 不受影响。

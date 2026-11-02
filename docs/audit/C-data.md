@@ -1,6 +1,6 @@
 # C · 数据层审计：到底什么在被用，什么零使用
 
-> 审计对象：`E:\ds-h\dsh-brain\data\`（brain.db + logs + ledger + backups）
+> 审计对象：`<repo>\data\`（brain.db + logs + ledger + backups）
 > 审计方式：SQLite 只读连接（`DatabaseSync(path,{readOnly:true})`）+ JSONL 解析，未写库、未跑任何会写日志的脚本
 > 审计时刻：**2026-10-30 22:50 (UTC+8)** ＝ `2026-10-30T14:50Z`
 > 库状态：WAL 模式，4.4 MB（1074 page × 4096B），`PRAGMA quick_check = ok`

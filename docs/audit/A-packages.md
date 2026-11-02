@@ -1,8 +1,8 @@
 # A-packages.md — packages 层审计
 
-> 审计对象：`E:\ds-h\dsh-brain\packages\`（core / memory / search / context / workspace / persona / directives / cognition，以及 README 提到的 backup）
+> 审计对象：`<repo>\packages\`（core / memory / search / context / workspace / persona / directives / cognition，以及 README 提到的 backup）
 > 审计日期：2026-10-30 夜 · 环境：Windows / node v22.22.2 / 只读审计，未改任何源码与配置
-> 生产口径（Lead 已核实，本地复核）：生产 profile `C:\Users\su\.dsh\profiles\web\cordis.patch.yml` 只挂 `apps/brain-tools`（id: brain-tools）。
+> 生产口径（Lead 已核实，本地复核）：生产 profile `C:\Users\<you>\.dsh\profiles\web\cordis.patch.yml` 只挂 `apps/brain-tools`（id: brain-tools）。
 > 该插件入口 `apps/brain-tools/index.js:183` 动态 import `@dsh-brain/memory`，`:186` 调 `openBrain({ dbPath, migrationsDir, bindings })`。
 > 因此：**"生产在用" = 能被 apps/brain-tools 这条链路调到；只被 tests/ 或 tools/ 调到的不算生产在用。**
 
@@ -259,7 +259,7 @@
 ## 七、可复核命令
 
 ```powershell
-cd E:\ds-h\dsh-brain
+cd <repo>
 
 # 1) 生产入口与组装点
 Select-String apps/brain-tools/index.js -Pattern "await import\('@dsh-brain/memory'\)|openBrain\("
@@ -269,7 +269,7 @@ Select-String packages/memory/src/index.js -Pattern "from '@dsh-brain/(workspace
 Select-String apps/brain-tools/index.js -Pattern "reflect\.runOnce|brainstem\.checkOnce|skill\.recordResult|salience\.markMemory|immune\.scan|scheduler\.runOnce|social\.generate|social\.send|workspace\.publish"
 
 # 3) 生产库状态（只读；不要跑会写 data/ 的脚本）
-node -e "const {DatabaseSync}=require('node:sqlite');const db=new DatabaseSync('E:/ds-h/dsh-brain/data/brain.db',{readOnly:true});for(const t of ['ws_events','reflections','health_alerts','social_candidates','directives','context_packages']){console.log(t, db.prepare('SELECT COUNT(*) c FROM '+t).get().c)}"
+node -e "const {DatabaseSync}=require('node:sqlite');const db=new DatabaseSync('<repo>/data/brain.db',{readOnly:true});for(const t of ['ws_events','reflections','health_alerts','social_candidates','directives','context_packages']){console.log(t, db.prepare('SELECT COUNT(*) c FROM '+t).get().c)}"
 
 # 4) 测试
 node --test "tests/cognition/*.test.mjs" "tests/workspace/*.test.mjs" "tests/persona/*.test.mjs" "tests/directives/*.test.mjs"   # 292/292

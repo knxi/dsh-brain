@@ -25,11 +25,18 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import zlib from 'node:zlib'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 /** 会话根目录（DSH 默认布局；可用参数覆盖，测试用临时目录）。 */
 export const DEFAULT_SESSIONS_ROOT = `${process.env.USERPROFILE ?? ''}/.dsh/sessions`
-/** 缓存落点。 */
-export const DEFAULT_CACHE_PATH = 'E:/ds-h/dsh-brain/data/persona/session-signals.json'
+/**
+ * 缓存落点。从本文件位置推仓库根（packages/persona/src/ → 上三级），
+ * 原来写死 `E:/ds-h/dsh-brain/...`，换一台电脑就指到不存在的路径。
+ * 要换位置：设 DSH_BRAIN_HOME 指向仓库根。
+ */
+const BRAIN_ROOT = process.env.DSH_BRAIN_HOME
+  || fileURLToPath(new URL('../../../', import.meta.url))
+export const DEFAULT_CACHE_PATH = join(BRAIN_ROOT, 'data', 'persona', 'session-signals.json')
 /** zstd 帧魔数（多帧文件必须逐帧解，`zstdDecompressSync` 只解第一帧）。 */
 const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd])
 

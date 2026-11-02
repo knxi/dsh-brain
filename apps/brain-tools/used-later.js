@@ -41,6 +41,7 @@ import { dirname } from 'node:path'
 import { createHash } from 'node:crypto'
 
 import { MAX_QUERY_CHARS, MAX_READ_BYTES } from './usage-log.js'
+import { DEFAULT_USED_LATER_LOG_PATH } from './brain-home.js'
 
 /**
  * 引用判定所需的最小连续原文长度（code unit 计）。
@@ -53,7 +54,7 @@ export const MIN_QUOTE_CHARS = 12
  * sidecar 默认落点（生产）。测试/冒烟**必须**显式传临时路径：
  * 合成数据写进观察期日志比没有统计更糟（CONTRACTS 12.1 / 12.39 同一条纪律）。
  */
-export const DEFAULT_USED_LATER_LOG = 'E:/ds-h/dsh-brain/data/logs/used-later.jsonl'
+export const DEFAULT_USED_LATER_LOG = DEFAULT_USED_LATER_LOG_PATH
 
 /** 一个会话最多缓存多少个未判定的会话（超出驱逐最旧）。 */
 export const MAX_SESSIONS = 32

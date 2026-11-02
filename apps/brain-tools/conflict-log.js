@@ -22,9 +22,10 @@
 
 import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { DEFAULT_CONFLICT_LOG_PATH } from './brain-home.js'
 
 /** 生产默认落点。路径可被 config.conflictLogPath 覆盖。 */
-export const DEFAULT_CONFLICT_LOG = 'E:/ds-h/dsh-brain/data/logs/conflict-actions.jsonl'
+export const DEFAULT_CONFLICT_LOG = DEFAULT_CONFLICT_LOG_PATH
 
 /** 允许的动作。新增动作必须同时在这里和前端的选择器里加。 */
 export const CONFLICT_ACTIONS = Object.freeze(['keep-left', 'keep-right', 'not-conflict'])

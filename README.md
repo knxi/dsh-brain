@@ -23,15 +23,19 @@ DSH 的外置大脑：把记忆落到本地 SQLite，让模型在十万字历史
 ## 跑起来
 
 ```powershell
-node --test "tests/**/*.test.mjs"   # 全量 989 项（2026-10-30 实测 989 pass / 0 fail）
-node apps/brain-tools/smoke.mjs     # 工具冒烟 25 项（临时库，不碰生产）
+node tools/install.mjs              # 挂进 DSH 的 profile（幂等，可以反复跑）
+node --test "tests/**/*.test.mjs"   # 全量 1020 项（2026-11-02 实测 1020 pass / 0 fail）
+node apps/brain-tools/smoke.mjs     # 工具冒烟 41 项（临时库，不碰生产）
 node tools/run-eval.mjs             # 检索质量评测 120 例
 ```
 
 页面挂在 DSH 自己的 webServer 上，同源同端口，不用另起服务：`/dsh-brain`。
 
-**接入方式**：已接在 `~/.dsh/profiles/web`，模式 explicit——只挂显式工具，不自动注入。
-要关就注释 `web/cordis.patch.yml` 末尾 5 行 `- insert:`，然后重启。
+**接入方式**：`node tools/install.mjs` 把 `apps/brain-tools` 挂进 DSH 的 profile，
+模式 explicit —— 只挂显式工具，不自动注入。**换一台电脑怎么装、怎么验、怎么把老库搬过去，
+看 [docs/INSTALL.md](docs/INSTALL.md)**（里面也解释了「为什么治理面板能打开不代表装好了」）。
+
+要临时关掉：注释 profile 的 `cordis.patch.yml` 里那条 `- insert:`（`id: brain-tools`），然后重启。
 
 ## 文档
 
