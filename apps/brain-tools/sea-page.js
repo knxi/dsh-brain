@@ -647,7 +647,7 @@ body.sea-page .nav{margin-top:14px}
 
     <div class="vp-hud">
       <div class="vp-tl">
-        <div class="vp-live"><i></i><span>NEURAL FIELD</span><b>LIVE</b></div>
+        <div class="vp-live"><i></i><span>记忆场</span><b>实时</b></div>
         <div class="vp-tlrow">
           <div class="vp-modes" id="modes">
             <button class="mode on" data-mode="type">类型</button>
@@ -660,7 +660,7 @@ body.sea-page .nav{margin-top:14px}
       </div>
 
       <div class="vp-tr">
-        <div class="vp-depth">FIELD DEPTH<b id="statDepth">1.00×</b></div>
+        <div class="vp-depth">视野深度<b id="statDepth">1.00×</b></div>
         <div class="vp-actions">
           <button class="btn" id="btnSpin">自动旋转</button>
           <button class="btn" id="btnReset">重置视角</button>
@@ -695,15 +695,15 @@ body.sea-page .nav{margin-top:14px}
       <div class="vp-legend" id="legend"></div>
 
       <div class="vp-core">
-        <div class="vp-core-k" id="coreK">SEMANTIC CORE</div>
-        <div class="vp-core-v" id="coreV"><b id="cntActive">—</b> ACTIVE NODES / <b id="cntClusters">—</b> CLUSTERS</div>
+        <div class="vp-core-k" id="coreK">语义核心</div>
+        <div class="vp-core-v" id="coreV"><b id="cntActive">—</b> 活跃节点 / <b id="cntClusters">—</b> 语义簇</div>
       </div>
 
       <aside class="vp-inspector" id="inspector">
         <div class="insp-empty" id="inspEmpty">
-          <div class="insp-k">NODE INSPECTOR</div>
+          <div class="insp-k">节点检视</div>
           <p>点击任意神经节点，放大并查看它的直接关联；点空白处退出聚焦。</p>
-          <div class="insp-meta"><span>3D PROJECTION</span><span>REALTIME</span></div>
+          <div class="insp-meta"><span>三维投影</span><span>实时</span></div>
         </div>
         <div id="detail"></div>
         <div id="ctx"></div>
@@ -765,17 +765,25 @@ body.sea-page .nav{margin-top:14px}
    * 信息量刚好够认出「这是哪条、属于哪类」，又不至于像摘要那样占掉半个屏幕。
    * 这里给八个类型各配一个代号，标签用它；中文名仍用于簇标签（事实 / 偏好 …）。
    */
+  /**
+   * 类型 → 节点标签用的短名。
+   *
+   * 2026-11-02 改：原来是 SEMANTIC / PREFERENCE 这套英文代号，照着某个参考视频的
+   * 「mem_e8b9b9 · EMOTION」形态抄的。主人一眼看过去问「这英文正常吗」——
+   * 不正常的是设计，不是显示：这是中文记忆库，节点类别没有理由用英文。
+   * 现在直接用 KIND 里的中文名，量级也够短（两字，比 SEMANTIC 还省空间）。
+   */
   const TYPE_CODE = {
-    semantic: 'SEMANTIC',
-    profile: 'PREFERENCE',
-    commitment: 'COMMITMENT',
-    episode: 'EPISODE',
-    skill: 'SKILL',
-    self: 'SELF',
-    relationship: 'RELATIONSHIP',
-    boundary: 'BOUNDARY',
+    semantic: '事实',
+    profile: '偏好',
+    commitment: '约定',
+    episode: '经历',
+    skill: '方法',
+    self: '自省',
+    relationship: '关系',
+    boundary: '边界',
   }
-  const codeOfType = (t) => TYPE_CODE[t] || String(t || 'other').toUpperCase()
+  const codeOfType = (t) => TYPE_CODE[t] || '其它'
   /** 节点短 id：「mem_e8b9b9」那种长度，够用且要能对上详情面板里的完整 ID。 */
   const shortId = (id) => {
     const s = String(id || '')
@@ -1038,13 +1046,13 @@ body.sea-page .nav{margin-top:14px}
       for (const e of edges) {
         if (focusMode.keep.has(e.a) && focusMode.keep.has(e.b)) chains += 1
       }
-      k.textContent = 'ASSOCIATION FOCUS'
-      v.innerHTML = '<b>' + chains + '</b> CHAINS · <b>' + visiblePoints().length
-        + '</b> NODES · PRESS ESC OR SPACE TO EXIT'
+      k.textContent = '关联聚焦'
+      v.innerHTML = '<b>' + chains + '</b> 条连线 · <b>' + visiblePoints().length
+        + '</b> 个节点 · 按 ESC 或空格退出'
     } else {
-      k.textContent = 'SEMANTIC CORE'
-      v.innerHTML = '<b>' + visiblePoints().length + '</b> ACTIVE NODES / <b>'
-        + pad2(clusterCount()) + '</b> CLUSTERS'
+      k.textContent = '语义核心'
+      v.innerHTML = '<b>' + visiblePoints().length + '</b> 活跃节点 / <b>'
+        + pad2(clusterCount()) + '</b> 语义簇'
     }
   }
 
@@ -1602,7 +1610,9 @@ body.sea-page .nav{margin-top:14px}
     g.textAlign = 'left'
     g.shadowColor = 'rgba(4,7,14,.95)'
     g.shadowBlur = 6
-    g.font = '600 9.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace'
+    // 2026-11-02：标签里的类别改成中文了（事实/偏好/约定…），字体必须能落到中文字形上，
+    // 否则 9.5px 的等宽字体回退到系统默认宋体会糊成一团。字号也给中文留到 10px。
+    g.font = '600 10px ui-monospace,SFMono-Regular,Menlo,Consolas,"Microsoft YaHei","PingFang SC",monospace'
     const placed = []
     // 靠前的先占位，避免远处的标签把近处的挤走
     const ordered = list.slice().sort((a, b) => {

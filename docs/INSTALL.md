@@ -56,10 +56,23 @@ node tools/install.mjs
 
 ```powershell
 node tools/install.mjs --dry-run              # 只看计划，不动磁盘
-node tools/install.mjs --profile desktop      # 装进指定 profile（默认自动找 web）
+node tools/install.mjs --profile web          # 装进指定 profile
+node tools/install.mjs --profile desktop      # 桌面端用户填 desktop（见下）
 node tools/install.mjs --dsh-home "D:\my\.dsh"  # DSH home 不在默认位置时
 node tools/install.mjs --pin-paths            # 在 patch 里钉死库路径（默认不钉，让插件自己推）
 ```
+
+**关于 profile（2026-11-03 改过，重要）**
+
+`~/.dsh/profiles/` 下往往不止一个（`web` / `desktop` / `headless` / 各种实验 profile）。
+
+- **只有一个** → 直接用
+- **多个** → **脚本会停下来**，把每个候选和它的最近改动时间列出来，让你用 `--profile` 指定。
+  它**不再替你猜**。以前硬编码 `web > desktop > cli`，多 profile 的机器会静默装进 `web`，
+  你在桌面端里当然看不到——不报错，只是「什么都没发生」。这正是这个项目反复栽的失败模式。
+
+**用桌面端的话**：填 `--profile desktop`。桌面端是 Electron 应用，**不监听 3080**，
+走的是它自己的 profile 和窗口。
 
 看到 `✓ 全部就绪` 才算过。有 `[FAIL]` 就把那一条解决掉再重跑，它不会替你删任何东西。
 
@@ -141,6 +154,10 @@ node tools/promote-to-plugin.mjs --revert --apply
 | 页面上记忆数是 0 | 库是新建的（正常），或路径推导到了别处 | 安装器自检里会打印「库：绝对路径」，对一下 |
 | `brain_search` 查不到东西但页面有记忆 | 两个不同的库 | 同上，看打印的库路径 |
 | 日志里 `[brain-tools] 找不到 dsh-brain 仓库根` | 插件被拷到了仓库外面 | 设 `DSH_BRAIN_HOME`，或把 `apps/brain-tools` 放回仓库里 |
+| 日志里 `DSH_BRAIN_HOME 指向的目录不是仓库根` | 环境变量指到了 `data/` 或 `apps/` 这类子目录 | 2026-11-02 起会忽略它并自动回退（以前会静默把库建到 `data\data\` 里，记忆看起来全丢）。改指仓库根 |
+| 日志里 `找不到会话信号索引模块` | 仓库不完整，或 `BRAIN_HOME` 推错了 | 重新拉全仓库；社交的 care/commitment 两类在没有它时只会如实说「没依据」 |
+| 安装器说「这台机器上有 N 个 profile」 | 有多个 profile，脚本不肯猜 | 用 `--profile <名字>` 指定一次；浏览器 / dsh web 一般是 `web`，桌面端是 `desktop` |
+| 7420 页面上说「宿主没在 3080 上跑」 | 要么真没起宿主；要么你在用**桌面端**（它不监听 3080，这个探测对它无效） | 桌面端：直接在桌面端窗口里打开「记忆」页，别理这句；浏览器：`dsh web --port 3080` |
 | `node:sqlite` 报错 | Node 太旧 | 升到 22.13+ |
 
 ---

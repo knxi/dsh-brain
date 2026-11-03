@@ -491,6 +491,24 @@ export function apply(ctx, config) {
         summary: `备份 ${backupId} 校验${verdict?.ok === true ? '通过' : '未通过'}`,
       }
     },
+    // 重算技能统计（2026-11-03 补上，原先是唯一的 hook 缺口）。
+    // confidence 是 wilsonLowerBound(successes, attempts) 的派生值，重算不产生新事实、
+    // 可重复跑、只动派生列——所以它配 L2 而不是 L1。
+    skillRebuild: async () => {
+      const skill = brainRef.cognition && brainRef.cognition.skill
+      if (!skill || typeof skill.rebuildConfidence !== 'function') {
+        // 后端不在就如实说，不假装跑过
+        return { ok: false, reason: 'skill_rebuild_unavailable', summary: 'cognition.skill 没有 rebuildConfidence（版本不匹配？）' }
+      }
+      const out = await skill.rebuildConfidence({ scopeId })
+      const sample = Array.isArray(out.samples) && out.samples.length > 0
+        ? `（例：${out.samples.map((s) => s.skillKey).join('、')}）`
+        : ''
+      return {
+        ok: true,
+        summary: `技能置信度重算：扫描 ${out.scanned} 行，修正 ${out.changed} 行${sample}`,
+      }
+    },
   }
 
   /**

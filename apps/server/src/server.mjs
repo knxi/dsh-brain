@@ -176,9 +176,14 @@ export function createBrainServer({ store, governance, config, logger }) {
         if (!res.headersSent) {
           res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
           res.end(
-            `宿主 dsh web 没在 127.0.0.1:${hostPort} 上跑。\n` +
-              '记忆/心海/使用/矛盾/实体/心情 这些页面挂在宿主上，先起 dsh web：dsh web --port ' +
-              `${hostPort} --no-open`,
+            `宿主没在 127.0.0.1:${hostPort} 上跑（7420 只是把 /dsh-brain 转发过去）。\n` +
+              '\n' +
+              `· 用浏览器 / dsh web：先起宿主  dsh web --port ${hostPort} --no-open\n` +
+              '· 用**桌面端**：桌面端不监听这个端口，上面那句探测对它无效，别被它误导。\n' +
+              '  直接在桌面端窗口里打开「记忆」页；如果显示 404，说明插件还没装进桌面端的 profile：\n' +
+              '  node tools/install.mjs --profile desktop，然后重启桌面端。\n' +
+              '\n' +
+              '记忆 / 心海 / 使用 / 矛盾 / 实体 / 心情 这些页面全挂在宿主里，7420 只负责转发。',
           );
         }
         resolve({ status: 502 });

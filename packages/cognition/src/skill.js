@@ -512,12 +512,63 @@ export function createSkill(options) {
     };
   }
 
+  /**
+   * 重算技能置信度（2026-11-03）。
+   *
+   * ── 重算什么、为什么安全 ──
+   * `skill_stats.confidence` 从来不是独立事实，它是 `wilsonLowerBound(successes, attempts)`
+   * 算出来的**派生值**。所以重算 = 用同一套纯函数，从已有的 successes / attempts 再算一遍，
+   * 把对不上的行修回来。三个性质决定了它不会造假：
+   *   - 不产生新事实：读的全是已有计数，一个数都不编；
+   *   - 幂等：连跑两次，第二次 changed 必为 0；
+   *   - 只动派生列：不碰 attempts / successes / failures / consecutive_failures。
+   *
+   * 什么时候会真的出现「对不上」：公式调过（比如 Z 从 1.96 改）、算法换过、
+   * 或者行被外部脚本写坏。这也正是它值得有个入口的原因——
+   * 不然只能靠「把行删了重记」，那才是真的丢事实。
+   *
+   * @param {{ scopeId?: string, dryRun?: boolean }} [input]
+   * @returns {Promise<{ scanned: number, changed: number, samples: any[], dryRun: boolean }>}
+   */
+  async function rebuildConfidence(input = {}) {
+    const scopeId = resolveScopeId(input.scopeId, bindings);
+    const dryRun = input.dryRun === true;
+    const rows = reader.all(
+      `SELECT id, skill_key, attempts, successes, confidence
+         FROM skill_stats WHERE scope_id = ?`,
+      [scopeId],
+    );
+    /** @type {Array<{ id: string, skillKey: string, before: number, after: number }>} */
+    const pending = [];
+    for (const row of rows) {
+      const after = wilsonLowerBound(Number(row.successes ?? 0), Number(row.attempts ?? 0));
+      const before = Number(row.confidence ?? 0);
+      // 浮点比较留一点余量：wilson 是连续函数，不该因为末位抖动就当成要重写
+      if (Math.abs(after - before) < 1e-9) continue;
+      pending.push({ id: String(row.id), skillKey: String(row.skill_key), before, after });
+    }
+    if (dryRun || pending.length === 0) {
+      return { scanned: rows.length, changed: pending.length, samples: pending.slice(0, 5), dryRun };
+    }
+    const stamp = clock.stamp();
+    await queue.write((tx) => {
+      for (const item of pending) {
+        tx.run(
+          `UPDATE skill_stats SET confidence = ?, updated_at = ?, updated_at_local = ? WHERE id = ?`,
+          [item.after, stamp.utc, stamp.local, item.id],
+        );
+      }
+    });
+    return { scanned: rows.length, changed: pending.length, samples: pending.slice(0, 5), dryRun: false };
+  }
+
   return {
     recordResult,
     getSkill,
     listWeakSkills,
     listLessons,
     stats,
+    rebuildConfidence,
     wilsonLowerBound,
     classifyError,
     skillKeyOf,

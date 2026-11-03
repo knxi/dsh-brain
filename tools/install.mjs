@@ -39,6 +39,7 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  statSync,
   symlinkSync,
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -223,7 +224,14 @@ if (!exists(profilesDir)) {
 
 /**
  * 找出要装进哪个 profile。
- * 显式 --profile 优先；否则挑一个既有 package.json 又有 cordis.patch.yml 的，优先 web。
+ *
+ * 2026-11-03 改：原来是硬编码顺序 `web > desktop > cli`，多 profile 的机器会**静默装错地方**——
+ * 插件装进 web，人却在桌面端里找，什么都看不见，也不报错。那正是这个项目反复栽的那类失败
+ * （「不报错，只是什么都没发生」），所以现在**绝不猜**：
+ *   - 显式 --profile：校验后使用
+ *   - 只有一个候选：用它
+ *   - 多个候选：**报错**，列出来让人指定
+ *
  * @returns {string}
  */
 function pickProfile() {
@@ -233,26 +241,51 @@ function pickProfile() {
     return p
   }
   if (!exists(profilesDir)) return ''
-  const preferred = ['web', 'desktop', 'cli']
-  for (const name of preferred) {
-    const p = join(profilesDir, name)
-    if (exists(join(p, 'package.json'))) return p
-  }
-  // 兜底：profiles 下任意一个带 package.json 的
+
+  /** @type {string[]} */
+  let candidates = []
   try {
-    for (const entry of readdirSync(profilesDir)) {
-      const p = join(profilesDir, entry)
-      if (exists(join(p, 'package.json'))) return p
-    }
+    candidates = readdirSync(profilesDir).filter((name) => exists(join(profilesDir, name, 'package.json')))
   } catch {
-    /* 读不了就交给下面的 block */
+    return ''
   }
+
+  if (candidates.length === 1) return join(profilesDir, candidates[0])
+  if (candidates.length === 0) return ''
+
+  // 多个 profile：不猜。把每个 profile 的最近改动时间列出来，让人一眼挑。
+  const rows = candidates.map((name) => {
+    const dir = join(profilesDir, name)
+    let stamp = 0
+    for (const file of ['cordis.patch.yml', 'package.json']) {
+      try {
+        const t = statSync(join(dir, file)).mtimeMs
+        if (t > stamp) stamp = t
+      } catch {
+        /* 没有就算了 */
+      }
+    }
+    return { name, stamp }
+  }).sort((a, b) => b.stamp - a.stamp)
+
+  block(
+    `这台机器上有 ${candidates.length} 个 profile，脚本不会替你猜（装错了不报错，只是「什么都没发生」）。\n`
+    + '         请用 --profile 指定一个：\n'
+    + rows.map((r) => `           --profile ${r.name.padEnd(10)} ${shorten(join(profilesDir, r.name))}`
+      + (r.stamp ? `   （最近改动 ${new Date(r.stamp).toISOString().slice(0, 16).replace('T', ' ')}）` : '')).join('\n')
+    + '\n         你在浏览器里用的是 `dsh web` → 一般选 web；用的是**桌面端** → 选桌面端对应的那个。',
+  )
   return ''
 }
 
 const PROFILE_DIR = pickProfile()
-if (!PROFILE_DIR) block('没找到可用的 profile（~/.dsh/profiles/{web,desktop} 都不存在）。用 --profile 指定。')
-if (PROFILE_DIR) console.log(`profile：${PROFILE_DIR}\n`)
+// profile 定不了就直接停：后面每一步都要往某个 profile 里写，猜错了不是报错，
+// 是「装到别处、看起来什么都没发生」。宁可什么都不做，也不能做半截。
+if (!PROFILE_DIR) {
+  console.log('\n✗ 先确定 profile 再跑：node tools/install.mjs --profile <名字>')
+  process.exit(1)
+}
+console.log(`profile：${PROFILE_DIR}\n`)
 
 // ── 2. workspace 包互链 ─────────────────────────────────────────────────────
 

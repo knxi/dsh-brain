@@ -38,21 +38,23 @@
 /**
  * 导航项。**顺序在这里定义一次**，所有页面按它渲染。
  * key 同时是 `renderNav({ active })` 的取值，也是「当前页」判定的唯一凭据。
- * kicker —— 标题区左上角那行 mono 编号：`序号 / 英文代号 CONTROL`。
+ * kicker —— 标题区左上角那行 mono 编号：`序号 / 页名`。
+ * 2026-11-02 改：原来是 `01 / MEMORY CONTROL` 这种英文代号，主人问「为什么都是英文」——
+ * 这是中文工具，编号只需要「我在第几页、这页叫什么」，不需要再背一套英文。
  * @type {ReadonlyArray<{ key: string, label: string, href: string, kicker: string }>}
  */
 export const NAV_ITEMS = Object.freeze([
-  { key: 'memory', label: '记忆', href: '/dsh-brain', kicker: '01 / MEMORY CONTROL' },
-  { key: 'sea', label: '心海', href: '/dsh-brain/sea', kicker: '02 / NEURAL FIELD' },
-  { key: 'usage', label: '使用', href: '/dsh-brain/usage', kicker: '03 / USAGE CONTROL' },
-  { key: 'conflicts', label: '矛盾', href: '/dsh-brain/conflicts', kicker: '04 / CONFLICTS CONTROL' },
-  { key: 'entities', label: '实体', href: '/dsh-brain/entities', kicker: '05 / ENTITIES CONTROL' },
-  { key: 'mood', label: '心情', href: '/dsh-brain/mood', kicker: '06 / MOOD CONTROL' },
-  { key: 'workspace', label: '空间', href: '/dsh-brain/workspace', kicker: '07 / WORKSPACE CONTROL' },
-  { key: 'cognition', label: '类脑', href: '/dsh-brain/cognition', kicker: '08 / COGNITION CONTROL' },
-  { key: 'persona', label: '人格', href: '/dsh-brain/persona', kicker: '09 / PERSONA CONTROL' },
-  { key: 'directives', label: '指令', href: '/dsh-brain/directives', kicker: '10 / DIRECTIVES CONTROL' },
-  { key: 'governance', label: '治理', href: '/dsh-brain/governance', kicker: '11 / GOVERNANCE CONTROL' },
+  { key: 'memory', label: '记忆', href: '/dsh-brain', kicker: '01 / 记忆控制台' },
+  { key: 'sea', label: '心海', href: '/dsh-brain/sea', kicker: '02 / 心海星图' },
+  { key: 'usage', label: '使用', href: '/dsh-brain/usage', kicker: '03 / 使用台账' },
+  { key: 'conflicts', label: '矛盾', href: '/dsh-brain/conflicts', kicker: '04 / 矛盾核验' },
+  { key: 'entities', label: '实体', href: '/dsh-brain/entities', kicker: '05 / 实体图谱' },
+  { key: 'mood', label: '心情', href: '/dsh-brain/mood', kicker: '06 / 心情状态' },
+  { key: 'workspace', label: '空间', href: '/dsh-brain/workspace', kicker: '07 / 工作空间' },
+  { key: 'cognition', label: '类脑', href: '/dsh-brain/cognition', kicker: '08 / 类脑协同' },
+  { key: 'persona', label: '人格', href: '/dsh-brain/persona', kicker: '09 / 人格关系' },
+  { key: 'directives', label: '指令', href: '/dsh-brain/directives', kicker: '10 / 自主指令' },
+  { key: 'governance', label: '治理', href: '/dsh-brain/governance', kicker: '11 / 治理面板' },
 ])
 
 /** HTML 属性值转义：href 目前都是常量，但模板拼字符串就该一律转义，别留口子。 */
