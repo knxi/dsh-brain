@@ -111,8 +111,8 @@ export const MEMORIES = [
   {
     key: 'code_ftp_endpoint',
     layer: 'long', type: 'semantic', importance: 0.75,
-    summary: '插件分发：FTP 端口 8877，被动模式',
-    content: '画布插件走 FTP 分发，端口 8877，被动模式，根目录 /grsai/，账号见凭据库。',
+    summary: '插件分发：FTP 端口 2121，被动模式',
+    content: '画布插件走 FTP 分发，端口 2121，被动模式，根目录 /plugin/，账号见凭据库。',
     validFrom: '2026-06-05T00:00:00.000Z', validUntil: null,
   },
   {
