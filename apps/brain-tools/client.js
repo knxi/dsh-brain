@@ -98,7 +98,23 @@ window.__ModuleLoader__.load({
         }
       }
 
-      const openConsole = () => { window.open('/dsh-brain', '_blank', 'noopener') }
+      // 控制台地址：从当前 origin 拼，不能写死 3080——
+      // 桌面端（Electron）不监听 3080，它的 origin 是别的（甚至每次不同）。
+      // 同时把地址明文显示出来：万一按钮点不开，复制到浏览器也能进。
+      const consoleUrl = (() => {
+        try {
+          return new URL('/dsh-brain', location.href).href
+        } catch {
+          return '/dsh-brain'
+        }
+      })()
+      const copyConsoleUrl = () => {
+        try {
+          navigator.clipboard.writeText(consoleUrl)
+        } catch {
+          window.prompt('复制这个地址', consoleUrl)
+        }
+      }
 
       const memText = failed ? '—' : (stats && stats.ok ? String(stats.memories) : '…')
       const idxText = failed ? '—' : (stats && stats.ok ? (stats.indexReady ? '正常' : '待建') : '…')
@@ -136,7 +152,15 @@ window.__ModuleLoader__.load({
         ),
 
         h('div', { className: 'bt-actions' },
-          h('button', { className: 'bt-btn primary', onClick: openConsole }, '打开控制台'),
+          // 用 <a> 而不是 window.open：Electron 里 window.open 会去开新窗口或甩给系统浏览器，
+          // 落到一个打不开的地方（2026-11-04 桌面端实测：按钮点了没反应）。
+          // 同源 <a> 就是普通导航，应用内能开。
+          h('a', {
+            className: 'bt-btn primary',
+            href: consoleUrl,
+            style: { textDecoration: 'none' },
+          }, '打开控制台'),
+          h('button', { className: 'bt-btn', onClick: copyConsoleUrl }, '复制地址'),
           gov !== null && gov.running
             ? h('button', {
               className: 'bt-btn',
@@ -162,6 +186,10 @@ window.__ModuleLoader__.load({
         h('div', { className: 'bt-note' },
           '控制台是只读视图：能查、能看来源和版本。删除与恢复这类操作在治理面板里，' +
           '它跑在 dsh web 进程内（默认 7420，只监听本机回环），可以在这里启动或停止。'),
+        // 桌面端（Electron）不监听 3080，控制台地址就是它自己的 origin。
+        // 把地址明文摆出来：按钮点不开时，复制到浏览器里能直接进。
+        h('div', { className: 'bt-note', style: { wordBreak: 'break-all' } },
+          '控制台地址：' + consoleUrl),
       )
     }
 
