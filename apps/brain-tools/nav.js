@@ -112,7 +112,29 @@ export function renderNav(opts) {
 }
 
 /**
- * 页面骨架的头三段：品牌条 + 标题区（含粘性导航）。
+ * 让 7420 知道宿主在哪（2026-11-04）。
+ *
+ * 背景：7420 的 `/dsh-brain/*` 是反向代理，目标端口默认 3080。但**桌面端（Electron）
+ * 不监听 3080**，端口还可能是随机的——配置写死或扫端口表都不靠谱。
+ *
+ * 反过来做：页面在宿主里加载时，把自己的 `location.port` 报给 7420，它记住。
+ * 用户只要在宿主里打开过一次控制台，7420 之后就能正确转发；端口变了下次自动更新。
+ *
+ * 三条约束：
+ *   - 只在**宿主 origin** 上报（port 是空/80/443/7420 就跳过，避免自我指认）；
+ *   - **失败静默**——治理服务没开是常态，不能让页面因此报错；
+ *   - 只发一个端口数字，没有任何身份或内容。
+ */
+const HOST_ANNOUNCE_SCRIPT =
+  '<script>(function(){try{'
+  + 'var p=location.port;if(!p||p==="80"||p==="443"||p==="7420")return;'
+  + 'fetch("http://127.0.0.1:7420/api/host-announce",{method:"POST",'
+  + 'headers:{"Content-Type":"application/json"},'
+  + 'body:JSON.stringify({port:Number(p)}),keepalive:true}).catch(function(){});'
+  + '}catch(e){}})()</script>'
+
+/**
+ * 页面骨架的头三段：品牌条 + 标题区（含粘性导航）+ 宿主端口上报脚。
  *
  * 页面用法：`<div class="wrap">${renderPageHead({...})}<div class="path">…</div>…</div>`
  *
@@ -134,4 +156,5 @@ export function renderPageHead(opts) {
     + (o.sub ? '<span class="sub">' + text(o.sub) + '</span>' : '')
     + renderNav({ active: active })
     + '</div>'
+    + HOST_ANNOUNCE_SCRIPT
 }

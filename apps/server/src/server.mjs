@@ -142,6 +142,19 @@ export function createBrainServer({ store, governance, config, logger }) {
   }
 
   /**
+   * 宿主自己上报的端口（2026-11-04）。
+   *
+   * 为什么要有它：`hostPort` 默认 3080，但**桌面端（Electron）不监听 3080**，
+   * 而且它的端口可能是随机的——配置里写死或扫固定端口表都不靠谱。
+   * 所以反过来做：控制台页面（挂在宿主里）加载时把自己的 `location.port` POST 过来，
+   * 这里记住。只要用户在宿主里打开过一次控制台，7420 就知道该往哪转发；
+   * 端口变了，下次打开控制台会自动更新。
+   *
+   * 安全性：只接受 1-65535 的整数端口，且只用于本机回环转发（本来就是本机公开视图）。
+   */
+  let announcedHostPort = /** @type {number|null} */ (null);
+
+  /**
    * 把请求原样转发到宿主的 `/dsh-brain/*`（2026-10-30）。
    *
    * 为什么要它：主人要的是「7420 一个端口，治理 + 记忆那套页面都能用」。
@@ -226,10 +239,61 @@ export function createBrainServer({ store, governance, config, logger }) {
         return;
       }
 
+      // ---- /api/host-announce：宿主自报端口（2026-11-04）---------
+      // 控制台页面在宿主里打开时 POST 自己的 location.port，让 7420 学会该往哪转发。
+      // 跨源请求，所以这里必须处理预检并回 CORS 头——但**不接受任何凭据**，
+      // 它只是「一个数字」，拿到它做不了什么（转发目标必须在本机回环可达）。
+      if (segments.length === 2 && segments[0] === 'api' && segments[1] === 'host-announce') {
+        const corsHeaders = {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Max-Age': '600',
+        };
+        if (method === 'OPTIONS') {
+          res.writeHead(204, corsHeaders);
+          res.end();
+          logLine(204, 0);
+          return;
+        }
+        if (method !== 'POST') {
+          res.writeHead(405, { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, error: '只接受 POST' }));
+          logLine(405, 0);
+          return;
+        }
+        /** @type {string} */
+        let body = '';
+        for await (const chunk of req) {
+          body += chunk;
+          if (body.length > 4096) break; // 就一个数字，超过这个长度一定是坏的
+        }
+        let port;
+        try {
+          const parsed = JSON.parse(body || '{}');
+          port = Number(parsed && parsed.port);
+        } catch {
+          port = NaN;
+        }
+        if (!Number.isInteger(port) || port < 1 || port > 65535) {
+          res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, error: 'port 必须是 1-65535 的整数' }));
+          logLine(400, 0);
+          return;
+        }
+        announcedHostPort = port;
+        logger.info(`宿主端口已更新：${port}（之后 /dsh-brain/* 反代到这里）`);
+        res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ ok: true, port }));
+        logLine(200, 0);
+        return;
+      }
+
       // ---- /dsh-brain/*：反向代理到宿主（dsh web，默认 3080）---------
       // 让 7420 成为**唯一入口**：治理面板 + 记忆/心海/使用/矛盾/实体/心情。
       // 免凭据：这些页面在 3080 上本来就是本机公开视图，代理不该改变它的可达性。
       // 但 Host 检查照过——防 DNS rebinding 是这一层的事，与是否免凭据无关。
+      // 目标端口优先用宿主自报的（桌面端不监听 3080），没有才回落到配置。
       if (segments.length > 0 && segments[0] === 'dsh-brain') {
         const hostVerdict = guard === null ? { ok: true } : guard.checkHost(req);
         if (!hostVerdict.ok) {
@@ -237,7 +301,7 @@ export function createBrainServer({ store, governance, config, logger }) {
           logLine(hostVerdict.status ?? 403, 0);
           return;
         }
-        const proxied = await proxyToHost(req, res, config.hostPort);
+        const proxied = await proxyToHost(req, res, announcedHostPort ?? config.hostPort);
         logLine(proxied.status, 0);
         return;
       }
